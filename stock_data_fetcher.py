@@ -73,6 +73,14 @@ class StockDataManager:
         """连接数据库，尝试多种认证方式"""
         db_config = self.config["database"]
 
+        # 获取默认转换器并进行自定义
+        conv = pymysql.converters.conversions.copy()
+        conv[datetime.date] = pymysql.converters.escape_date
+
+        # 添加自定义的数值类型转换
+        conv[pymysql.FIELD_TYPE.DECIMAL] = float
+        conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
+
         # 尝试多种连接方式
         connection_methods = [
             {
@@ -85,6 +93,8 @@ class StockDataManager:
                     "database": db_config["database"],
                     "charset": db_config.get("charset", "utf8mb4"),
                     "autocommit": False,
+                    # 使用完整的转换器配置
+                    "conv": conv,
                 },
             },
             {
@@ -101,6 +111,8 @@ class StockDataManager:
                         "caching_sha2_password": "mysql_native_password"
                     },
                     "ssl_disabled": True,
+                    # 使用完整的转换器配置
+                    "conv": conv,
                 },
             },
             {
@@ -119,6 +131,8 @@ class StockDataManager:
                     },
                     "ssl_disabled": True,
                     "local_infile": True,
+                    # 使用完整的转换器配置
+                    "conv": conv,
                 },
             },
         ]
@@ -324,10 +338,14 @@ class StockDataManager:
             columns = ["股票代码", "最新日期", "最新价格", "涨跌幅(%)", "成交量"]
             df = pd.DataFrame(results, columns=columns)
 
-            # 格式化数据
-            df["涨跌幅(%)"] = (df["涨跌幅(%)"] * 100).round(2)
+            # 处理DECIMAL类型数据，转换为float
+            df["涨跌幅(%)"] = pd.to_numeric(df["涨跌幅(%)"], errors="coerce") * 100
+            df["最新价格"] = pd.to_numeric(df["最新价格"], errors="coerce")
+            df["成交量"] = pd.to_numeric(df["成交量"], errors="coerce").astype("Int64")
+
+            # 格式化显示
+            df["涨跌幅(%)"] = df["涨跌幅(%)"].round(2)
             df["最新价格"] = df["最新价格"].round(3)
-            df["成交量"] = df["成交量"].astype(int)
 
             self.logger.info(f"查询到{len(df)}只股票的最新价格")
             return df
