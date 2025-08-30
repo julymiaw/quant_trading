@@ -97,6 +97,60 @@ python stock_data_fetcher.py --market
 python stock_data_fetcher.py --help
 ```
 
+### 4. 策略回测与分析
+
+量化交易系统提供了完整的策略回测功能，可以评估不同策略在历史数据上的表现。
+
+#### 4.1 准备回测数据
+
+在进行回测前，首先需要准备足够的历史数据：
+
+```bash
+# 准备指定股票的回测数据（默认3年数据）
+python stock_data_fetcher.py --backtest --stocks 000001.SZ,600519.SH
+
+# 自定义历史数据天数
+python stock_data_fetcher.py --backtest --stocks 000001.SZ --days 730
+
+# 检查哪些股票有足够的回测数据（数据完整性>95%）
+python stock_data_fetcher.py --check
+```
+
+> **注意**：高质量回测至少需要1年以上的历史数据，推荐使用3年数据以捕捉不同市场周期。
+
+#### 4.2 运行策略回测
+
+完成数据准备后，可以运行策略回测：
+
+```bash
+# 查看可用策略列表
+python strategy_backtest.py --list
+
+# 对指定策略和股票进行回测
+python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ
+
+# 指定时间范围和初始资金
+python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2025-01-01 --cash 200000
+```
+
+回测结果会显示关键指标，如总收益率、年化收益率、最大回撤、夏普比率等，并自动保存到数据库。同时会弹出交互式图表展示回测过程。
+
+#### 4.3 蒙特卡洛模拟
+
+为评估策略的稳健性，系统还提供蒙特卡洛模拟功能：
+
+```bash
+# 运行蒙特卡洛模拟（默认50次）
+python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --montecarlo
+
+# 增加模拟次数提高结果可靠性
+python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --montecarlo --simulations 100
+```
+
+蒙特卡洛模拟会生成收益率分布和最大回撤分布图表，并显示关键统计指标，帮助您评估策略在不同市场环境下的表现稳定性。
+
+> **提示**：回测脚本支持更多参数设置，使用 `python strategy_backtest.py --help` 查看完整帮助信息。
+
 ## 项目结构
 
 ```plaintext
@@ -106,7 +160,8 @@ quant_trading/
 ├── quant_trading.yml        # Conda环境配置文件
 ├── test_database_connection.py  # 数据库连接测试脚本
 ├── stock_data_fetcher.py    # 股票数据获取脚本
-├── config.json              # 配置文件（首次运行test_database_connection.py生成）
+├── strategy_backtest.py     # 策略回测脚本
+├── config.json              # 配置文件
 └── 要求.md                  # 项目需求文档
 ```
 

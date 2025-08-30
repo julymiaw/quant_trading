@@ -8,3 +8,5 @@ dependencies:
       - tushare
       - pymysql
       - cryptography
+      - backtrader
+      - matplotlib
