@@ -823,7 +823,7 @@ class BacktestEngine:
 
     def plot_results(self, cerebro: bt.Cerebro, strategy_name: str, stock_code: str):
         """
-        绘制回测结果图表
+        绘制回测结果图表并保存到文件
 
         Args:
             cerebro: Cerebro实例
@@ -831,7 +831,17 @@ class BacktestEngine:
             stock_code: 股票代码
         """
         try:
-            cerebro.plot(
+            # 设置图表输出目录
+            output_dir = self.config.get("backtest", {}).get("output_dir", "backtest_results")
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # 生成文件名（策略名称_股票代码_时间戳.png）
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            filename = f"{output_dir}/{strategy_name}_{stock_code}_{timestamp}.png"
+
+            # 绘制图表并获取返回值
+            figs = cerebro.plot(
                 style="candlestick",
                 barup="red",
                 bardown="green",
@@ -840,10 +850,20 @@ class BacktestEngine:
                 title=f"{strategy_name} - {stock_code}回测结果",
             )
 
+            # 保存图表
+            if figs and len(figs) > 0 and len(figs[0]) > 0:
+                fig = figs[0][0]  # 获取图表对象
+                fig.savefig(filename, dpi=300)  # 保存为高分辨率图片
+                self.logger.info(f"回测结果图表已保存至: {filename}")
+            else:
+                self.logger.warning("回测图表对象为空，无法保存图表")
+
+            # 保留交互式窗口
             self.logger.info("回测结果图表已显示，请查看弹出的窗口")
 
         except Exception as e:
             self.logger.error(f"绘制回测结果图表失败: {e}")
+            self.logger.error(traceback.format_exc())
 
     def run_monte_carlo_simulation(
         self,
