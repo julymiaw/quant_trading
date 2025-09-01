@@ -95,9 +95,9 @@ class DatabaseTester:
         if not self.config:
             logger.error("配置未加载，无法测试数据库连接")
             return False
-
+    
         db_config = self.config["database"]
-
+    
         print("\n" + "=" * 60)
         print("🔍 数据库连接测试")
         print("=" * 60)
@@ -105,56 +105,37 @@ class DatabaseTester:
         print(f"用户: {db_config['user']}")
         print(f"数据库: {db_config['database']}")
         print("-" * 60)
-
+    
         try:
-            # 尝试多种连接方式
-            connection_methods = [
-                {
-                    "name": "标准连接",
-                    "params": {
-                        "host": db_config["host"],
-                        "port": db_config.get("port", 3306),
-                        "user": db_config["user"],
-                        "password": db_config["password"],
-                        "database": db_config["database"],
-                        "charset": db_config.get("charset", "utf8mb4"),
-                        "autocommit": False,
-                    },
-                },
-                {
-                    "name": "兼容模式连接",
-                    "params": {
-                        "host": db_config["host"],
-                        "port": db_config.get("port", 3306),
-                        "user": db_config["user"],
-                        "password": db_config["password"],
-                        "database": db_config["database"],
-                        "charset": db_config.get("charset", "utf8mb4"),
-                        "autocommit": False,
-                        "auth_plugin_map": {
-                            "caching_sha2_password": "mysql_native_password"
-                        },
-                        "ssl_disabled": True,
-                    },
-                },
-            ]
-
-            for method in connection_methods:
-                try:
-                    print(f"🔄 尝试{method['name']}...")
-                    self.connection = pymysql.connect(**method["params"])
-                    print(f"✅ {method['name']}成功！")
-                    self._test_database_operations()
-                    return True
-
-                except Exception as e:
-                    print(f"❌ {method['name']}失败: {e}")
-                    continue
-
-            print("❌ 所有连接方式都失败了")
+            # 只使用标准连接方式
+            print("🔄 连接数据库...")
+            self.connection = pymysql.connect(
+                host=db_config["host"],
+                port=db_config.get("port", 3306),
+                user=db_config["user"],
+                password=db_config["password"],
+                database=db_config["database"],
+                charset=db_config.get("charset", "utf8mb4"),
+                autocommit=False
+            )
+            print("✅ 数据库连接成功！")
+            self._test_database_operations()
+            return True
+        except pymysql.err.OperationalError as e:
+            if "Access denied" in str(e):
+                print(f"❌ 数据库访问被拒绝: {e}")
+                print("  请检查用户名和密码是否正确")
+            elif "Unknown database" in str(e):
+                print(f"❌ 数据库不存在: {e}")
+                print("  请先运行初始化脚本创建数据库")
+            elif "Can't connect" in str(e):
+                print(f"❌ 无法连接到数据库服务器: {e}")
+                print("  请确认MySQL服务是否启动")
+            else:
+                print(f"❌ 数据库连接错误: {e}")
             return False
-
         except Exception as e:
+            print(f"❌ 连接数据库时发生未知错误: {e}")
             logger.error(f"数据库连接测试失败: {e}")
             return False
 

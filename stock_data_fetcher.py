@@ -82,85 +82,50 @@ class StockDataManager:
         self.pro = ts.pro_api()
 
     def connect_database(self):
-        """连接数据库，尝试多种认证方式"""
+        """连接数据库"""
         db_config = self.config["database"]
-
-        # 获取默认转换器并进行自定义
-        conv = pymysql.converters.conversions.copy()
-        conv[datetime.date] = pymysql.converters.escape_date
-
-        # 添加自定义的数值类型转换
-        conv[pymysql.FIELD_TYPE.DECIMAL] = float
-        conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
-
-        # 尝试多种连接方式
-        connection_methods = [
-            {
-                "name": "标准连接",
-                "params": {
-                    "host": db_config["host"],
-                    "port": db_config.get("port", 3306),
-                    "user": db_config["user"],
-                    "password": db_config["password"],
-                    "database": db_config["database"],
-                    "charset": db_config.get("charset", "utf8mb4"),
-                    "autocommit": False,
-                    # 使用完整的转换器配置
-                    "conv": conv,
-                },
-            },
-            {
-                "name": "兼容模式连接",
-                "params": {
-                    "host": db_config["host"],
-                    "port": db_config.get("port", 3306),
-                    "user": db_config["user"],
-                    "password": db_config["password"],
-                    "database": db_config["database"],
-                    "charset": db_config.get("charset", "utf8mb4"),
-                    "autocommit": False,
-                    "auth_plugin_map": {
-                        "caching_sha2_password": "mysql_native_password"
-                    },
-                    "ssl_disabled": True,
-                    # 使用完整的转换器配置
-                    "conv": conv,
-                },
-            },
-            {
-                "name": "强制原生认证",
-                "params": {
-                    "host": db_config["host"],
-                    "port": db_config.get("port", 3306),
-                    "user": db_config["user"],
-                    "password": db_config["password"],
-                    "database": db_config["database"],
-                    "charset": db_config.get("charset", "utf8mb4"),
-                    "autocommit": False,
-                    "auth_plugin_map": {
-                        "caching_sha2_password": "mysql_native_password",
-                        "sha256_password": "mysql_native_password",
-                    },
-                    "ssl_disabled": True,
-                    "local_infile": True,
-                    # 使用完整的转换器配置
-                    "conv": conv,
-                },
-            },
-        ]
-
-        for method in connection_methods:
-            try:
-                self.logger.info(f"尝试{method['name']}...")
-                self.connection = pymysql.connect(**method["params"])
-                self.logger.info(f"{method['name']}成功")
-                return
-            except Exception as e:
-                self.logger.warning(f"{method['name']}失败: {e}")
-                continue
-
-        # 所有方法都失败
-        raise Exception("所有数据库连接方式都失败，请检查配置和数据库状态")
+        
+        try:
+            self.logger.info("连接数据库...")
+            
+            # 获取默认转换器并进行自定义
+            conv = pymysql.converters.conversions.copy()
+            conv[datetime.date] = pymysql.converters.escape_date
+            
+            # 添加数值类型转换（如果需要）
+            conv[pymysql.FIELD_TYPE.DECIMAL] = float
+            conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
+            
+            # 使用标准连接方式
+            self.connection = pymysql.connect(
+                host=db_config["host"],
+                port=db_config.get("port", 3306),
+                user=db_config["user"],
+                password=db_config["password"],
+                database=db_config["database"],
+                charset=db_config.get("charset", "utf8mb4"),
+                autocommit=False,
+                conv=conv
+            )
+            
+            self.logger.info("数据库连接成功")
+            
+        except pymysql.err.OperationalError as e:
+            if "Access denied" in str(e):
+                self.logger.error(f"数据库访问被拒绝: {e}")
+                self.logger.error("请检查用户名和密码是否正确")
+            elif "Unknown database" in str(e):
+                self.logger.error(f"数据库不存在: {e}")
+                self.logger.error("请先运行初始化脚本创建数据库")
+            elif "Can't connect" in str(e):
+                self.logger.error(f"无法连接到数据库服务器: {e}")
+                self.logger.error("请确认MySQL服务是否启动")
+            else:
+                self.logger.error(f"数据库连接错误: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"连接数据库时发生未知错误: {e}")
+            raise
 
     def close_database(self):
         """关闭数据库连接"""
