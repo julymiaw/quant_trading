@@ -163,6 +163,7 @@ CREATE TABLE BacktestReport (
     report_id VARCHAR(50) NOT NULL,
     strategy_id VARCHAR(50) NOT NULL,
     user_id VARCHAR(50) NOT NULL,
+    stock_code VARCHAR(20) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     initial_fund DECIMAL(15,2) NOT NULL,
@@ -180,6 +181,7 @@ CREATE TABLE BacktestReport (
     PRIMARY KEY (report_id),
     INDEX idx_strategy_generate_time (strategy_id, report_generate_time),
     INDEX idx_user_id (user_id),
+    INDEX idx_stock_code (stock_code),  -- 添加股票代码索引
     
     CONSTRAINT fk_report_strategy FOREIGN KEY (strategy_id) REFERENCES Strategy(strategy_id),
     CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES User(user_id),

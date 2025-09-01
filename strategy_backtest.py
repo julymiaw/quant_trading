@@ -263,10 +263,10 @@ class DatabaseManager:
 
             query = """
             INSERT INTO BacktestReport (
-                report_id, strategy_id, user_id, start_date, end_date,
+                report_id, strategy_id, user_id, stock_code, start_date, end_date,
                 initial_fund, final_fund, total_return, annual_return,
                 max_drawdown, sharpe_ratio, win_rate, profit_loss_ratio,
-                trade_count, report_generate_time, report_status, stock_code
+                trade_count, report_generate_time, report_status
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
@@ -276,6 +276,7 @@ class DatabaseManager:
                 report_id,
                 report_data["strategy_id"],
                 report_data["user_id"],
+                report_data["stock_code"],  # 确保这个位置与SQL中的位置匹配
                 report_data["start_date"],
                 report_data["end_date"],
                 report_data["initial_fund"],
@@ -288,8 +289,7 @@ class DatabaseManager:
                 report_data.get("profit_loss_ratio"),
                 report_data["trade_count"],
                 datetime.now(),
-                "completed",
-                report_data["stock_code"]
+                "completed"
             )
 
             cursor.execute(query, params)
