@@ -32,53 +32,60 @@ warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 plt.rcParams["font.sans-serif"] = ["SimHei"]  # 用来正常显示中文标签
 plt.rcParams["axes.unicode_minus"] = False  # 用来正常显示负号
 
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-class ConfigManager:
-    """配置管理类"""
+# 数据库默认设置
+DB_DEFAULTS = {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "database": "quantitative_trading",
+    "charset": "utf8mb4"
+}
 
-    @staticmethod
-    def load_config(config_file: str = "config.json") -> Dict[str, Any]:
-        """加载配置文件"""
-        if not os.path.exists(config_file):
-            raise FileNotFoundError(f"配置文件不存在: {config_file}")
+# 回测默认设置
+BACKTEST_DEFAULTS = {
+    "output_dir": "backtest_results",
+    "plot_results": True,
+    "debug_mode": False
+}
 
-        with open(config_file, "r", encoding="utf-8") as f:
-            config = json.load(f)
 
-        # 验证必需配置
-        required_sections = ["database", "backtest"]
-        for section in required_sections:
-            if section not in config:
-                raise ValueError(f"配置文件缺少必需的section: {section}")
+def load_config(config_file: str = "config.json") -> Dict[str, Any]:
+    """加载配置文件"""
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"配置文件不存在: {config_file}")
 
-        return config
+    with open(config_file, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    # 验证必需配置
+    if "db_password" not in config:
+        raise ValueError("配置文件缺少数据库密码")
+
+    return config
 
 
 class DatabaseManager:
     """数据库管理类"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, db_password: str):
         """
         初始化数据库管理器
 
         Args:
-            config: 配置字典
+            db_password: 数据库密码
         """
-        self.config = config
+        self.db_password = db_password
         self.connection = None
-
-        # 配置日志
-        log_level = config.get("system", {}).get("log_level", "INFO")
-        logging.basicConfig(
-            level=getattr(logging, log_level),
-            format="%(asctime)s - %(levelname)s - %(message)s",
-        )
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def connect_database(self):
         """连接数据库"""
-        db_config = self.config["database"]
-        
         try:
             self.logger.info("连接数据库...")
             
@@ -86,39 +93,26 @@ class DatabaseManager:
             conv = pymysql.converters.conversions.copy()
             conv[datetime.date] = pymysql.converters.escape_date
             
-            # 添加数值类型转换（如果需要）
+            # 添加数值类型转换
             conv[pymysql.FIELD_TYPE.DECIMAL] = float
             conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
             
             # 使用标准连接方式
             self.connection = pymysql.connect(
-                host=db_config["host"],
-                port=db_config.get("port", 3306),
-                user=db_config["user"],
-                password=db_config["password"],
-                database=db_config["database"],
-                charset=db_config.get("charset", "utf8mb4"),
+                host=DB_DEFAULTS["host"],
+                port=DB_DEFAULTS["port"],
+                user=DB_DEFAULTS["user"],
+                password=self.db_password,
+                database=DB_DEFAULTS["database"],
+                charset=DB_DEFAULTS["charset"],
                 autocommit=False,
                 conv=conv
             )
             
             self.logger.info("数据库连接成功")
             
-        except pymysql.err.OperationalError as e:
-            if "Access denied" in str(e):
-                self.logger.error(f"数据库访问被拒绝: {e}")
-                self.logger.error("请检查用户名和密码是否正确")
-            elif "Unknown database" in str(e):
-                self.logger.error(f"数据库不存在: {e}")
-                self.logger.error("请先运行初始化脚本创建数据库")
-            elif "Can't connect" in str(e):
-                self.logger.error(f"无法连接到数据库服务器: {e}")
-                self.logger.error("请确认MySQL服务是否启动")
-            else:
-                self.logger.error(f"数据库连接错误: {e}")
-            raise
         except Exception as e:
-            self.logger.error(f"连接数据库时发生未知错误: {e}")
+            self.logger.error(f"连接数据库失败: {e}")
             raise
 
     def close_database(self):
@@ -272,9 +266,9 @@ class DatabaseManager:
                 report_id, strategy_id, user_id, start_date, end_date,
                 initial_fund, final_fund, total_return, annual_return,
                 max_drawdown, sharpe_ratio, win_rate, profit_loss_ratio,
-                trade_count, report_generate_time, report_status
+                trade_count, report_generate_time, report_status, stock_code
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """
 
@@ -295,6 +289,7 @@ class DatabaseManager:
                 report_data["trade_count"],
                 datetime.now(),
                 "completed",
+                report_data["stock_code"]
             )
 
             cursor.execute(query, params)
@@ -379,7 +374,7 @@ class DynamicBacktestStrategy(bt.Strategy):
         self.trades = []
 
         # 日志
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def setup_indicators(self):
         """根据策略条件设置技术指标"""
@@ -604,17 +599,15 @@ class DynamicBacktestStrategy(bt.Strategy):
 class BacktestEngine:
     """回测引擎，封装Backtrader的回测逻辑"""
 
-    def __init__(self, config: Dict[str, Any], db_manager: DatabaseManager):
+    def __init__(self, db_manager: DatabaseManager):
         """
         初始化回测引擎
 
         Args:
-            config: 配置字典
             db_manager: 数据库管理器实例
         """
-        self.config = config
         self.db_manager = db_manager
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def run_backtest(
         self,
@@ -624,6 +617,7 @@ class BacktestEngine:
         end_date: str,
         initial_cash: float = 100000.0,
         user_id: str = "admin_001",
+        debug_mode: bool = False
     ) -> Dict[str, Any]:
         """
         运行回测
@@ -635,6 +629,7 @@ class BacktestEngine:
             end_date: 结束日期 (YYYY-MM-DD)
             initial_cash: 初始资金
             user_id: 用户ID
+            debug_mode: 调试模式
 
         Returns:
             回测结果字典
@@ -673,7 +668,7 @@ class BacktestEngine:
         cerebro.addstrategy(
             DynamicBacktestStrategy,
             strategy_conditions=strategy_conditions,
-            debug_mode=self.config.get("backtest", {}).get("debug_mode", False),
+            debug_mode=debug_mode,
         )
 
         # 8. 添加分析器
@@ -697,7 +692,7 @@ class BacktestEngine:
         backtest_result["report_id"] = report_id
 
         # 12. 绘制结果图表
-        if self.config.get("backtest", {}).get("plot_results", True):
+        if BACKTEST_DEFAULTS["plot_results"]:
             self.plot_results(cerebro, strategy_info["strategy_name"], stock_code)
 
         return backtest_result
@@ -823,7 +818,7 @@ class BacktestEngine:
         """
         try:
             # 设置图表输出目录
-            output_dir = self.config.get("backtest", {}).get("output_dir", "backtest_results")
+            output_dir = BACKTEST_DEFAULTS["output_dir"]
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
@@ -848,9 +843,6 @@ class BacktestEngine:
                 self.logger.info(f"回测结果图表已保存至: {filename}")
             else:
                 self.logger.warning("回测图表对象为空，无法保存图表")
-
-            # 保留交互式窗口
-            self.logger.info("回测结果图表已显示，请查看弹出的窗口")
 
         except Exception as e:
             self.logger.error(f"绘制回测结果图表失败: {e}")
@@ -1060,16 +1052,12 @@ class BacktestEngine:
             )
 
             # 保存图表
-            output_dir = self.config.get("backtest", {}).get(
-                "output_dir", "backtest_results"
-            )
+            output_dir = BACKTEST_DEFAULTS["output_dir"]
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = (
-                f"{output_dir}/{strategy_name}_{stock_code}_MonteCarlo_{timestamp}.png"
-            )
+            filename = f"{output_dir}/{strategy_name}_{stock_code}_MonteCarlo_{timestamp}.png"
             plt.savefig(filename)
             self.logger.info(f"蒙特卡洛模拟结果图表已保存至: {filename}")
 
@@ -1092,31 +1080,29 @@ def main():
     parser.add_argument("--montecarlo", action="store_true", help="运行蒙特卡洛模拟")
     parser.add_argument("--simulations", type=int, default=50, help="蒙特卡洛模拟次数")
     parser.add_argument("--list", action="store_true", help="列出所有可用策略")
+    parser.add_argument("--config", type=str, default="config.json", help="配置文件路径")
+    parser.add_argument("--debug", action="store_true", help="开启调试模式")
 
     args = parser.parse_args()
 
-    print("🚀 量化交易系统 - 策略回测脚本")
-    print("文件名: strategy_backtest.py")
-    print("虚拟环境: quant_trading")
-    print("推荐Python版本: 3.10.x")
-    print("=" * 60)
+    logger.info("量化交易系统 - 策略回测脚本启动")
 
     try:
         # 1. 加载配置
-        print("📄 加载配置文件...")
-        config = ConfigManager.load_config("config.json")
-        print("✅ 配置文件加载成功")
+        logger.info("加载配置文件...")
+        config = load_config(args.config)
+        logger.info("配置文件加载成功")
 
         # 2. 创建数据库管理器
-        db_manager = DatabaseManager(config)
+        db_manager = DatabaseManager(config["db_password"])
 
         # 3. 连接数据库
-        print("🔌 连接数据库...")
+        logger.info("连接数据库...")
         db_manager.connect_database()
-        print("✅ 数据库连接成功")
+        logger.info("数据库连接成功")
 
         # 4. 创建回测引擎
-        backtest_engine = BacktestEngine(config, db_manager)
+        backtest_engine = BacktestEngine(db_manager)
 
         # 5. 根据参数执行不同操作
         if args.list:
@@ -1147,15 +1133,11 @@ def main():
             if not args.end:
                 args.end = datetime.now().strftime("%Y-%m-%d")
 
-            print(f"\n📈 回测配置:")
-            print(f"  策略ID: {args.strategy}")
-            print(f"  股票代码: {args.stock}")
-            print(f"  时间范围: {args.start} 至 {args.end}")
-            print(f"  初始资金: {args.cash}")
+            logger.info(f"回测配置: 策略ID={args.strategy}, 股票代码={args.stock}, 时间范围={args.start}至{args.end}, 初始资金={args.cash}")
 
             if args.montecarlo:
                 # 运行蒙特卡洛模拟
-                print(f"\n🔄 开始运行蒙特卡洛模拟 ({args.simulations}次)...")
+                logger.info(f"开始运行蒙特卡洛模拟 ({args.simulations}次)...")
                 monte_carlo_results = backtest_engine.run_monte_carlo_simulation(
                     args.strategy,
                     args.stock,
@@ -1183,7 +1165,7 @@ def main():
 
             else:
                 # 运行标准回测
-                print("\n🔄 开始运行回测...")
+                logger.info("开始运行回测...")
                 backtest_results = backtest_engine.run_backtest(
                     args.strategy,
                     args.stock,
@@ -1191,6 +1173,7 @@ def main():
                     args.end,
                     args.cash,
                     args.user,
+                    args.debug
                 )
 
                 # 显示回测结果
@@ -1230,17 +1213,20 @@ def main():
             )
             print("查看帮助: python strategy_backtest.py --help")
 
-        print("\n🎉 策略回测脚本执行完成！")
+        logger.info("策略回测脚本执行完成！")
 
     except FileNotFoundError as e:
+        logger.error(f"配置文件错误: {e}")
         print(f"❌ 配置文件错误: {e}")
-        print("💡 请运行 python test_database_connection.py 生成配置文件")
+        print("💡 请运行 python connection_tester.py 生成配置文件")
     except ValueError as e:
+        logger.error(f"参数错误: {e}")
         print(f"❌ 参数错误: {e}")
     except Exception as e:
         error_msg = f"处理过程中发生错误: {e}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
         print(f"❌ {error_msg}")
-        logging.error(traceback.format_exc())
 
     finally:
         if "db_manager" in locals():
@@ -1272,6 +1258,8 @@ def show_usage():
    --montecarlo   : 启用蒙特卡洛模拟
    --simulations  : 蒙特卡洛模拟次数，默认为50
    --list         : 列出所有可用策略
+   --config       : 配置文件路径，默认为config.json
+   --debug        : 开启调试模式
    --help         : 显示帮助信息
 
 ⚠️ 注意事项:
