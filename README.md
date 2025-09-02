@@ -97,23 +97,14 @@ python stock_data_fetcher.py --backtest --stocks 000001.SZ,600519.SH
 # 自定义历史数据天数
 python stock_data_fetcher.py --backtest --stocks 000001.SZ --days 730
 
+# 使用指数成分股进行回测（如沪深300）
+python stock_data_fetcher.py --backtest --index 000300.SH
+
 # 检查哪些股票有足够的回测数据（数据完整性>95%）
 python stock_data_fetcher.py --check
-
-# 一键准备完整回测环境（包含基本面数据和指数成分股）
-python stock_data_fetcher.py --full-prepare
-
-# 单独获取基本面数据
-python stock_data_fetcher.py --stock-basic  # 获取股票基本信息
-python stock_data_fetcher.py --valuation    # 获取市值、市净率等估值数据
-python stock_data_fetcher.py --balance      # 获取资产负债表数据
-python stock_data_fetcher.py --income       # 获取利润表数据
-
-# 获取指数成分股
-python stock_data_fetcher.py --index 000300.SH  # 获取沪深300成分股
 ```
 
-> **注意**：高质量回测至少需要1年以上的历史数据，推荐使用3年数据以捕捉不同市场周期。基本面分析策略还需要获取估值和财务数据。
+> **注意**：每次运行数据准备命令时，系统会自动获取股票基本信息、估值数据、财务数据等所有回测必要的数据，无需单独执行额外命令。
 
 ### 4. 策略回测与分析
 

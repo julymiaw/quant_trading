@@ -34,7 +34,7 @@ DB_DEFAULTS = {
     "port": 3306,
     "user": "root",
     "database": "quantitative_trading",
-    "charset": "utf8mb4"
+    "charset": "utf8mb4",
 }
 
 
@@ -77,7 +77,7 @@ class StockDataManager:
                 database=DB_DEFAULTS["database"],
                 charset=DB_DEFAULTS["charset"],
                 autocommit=False,
-                conv=conv
+                conv=conv,
             )
 
             self.logger.info("数据库连接成功")
@@ -100,9 +100,7 @@ class StockDataManager:
         """获取股票行情数据"""
         try:
             ts_code_str = ",".join(ts_codes)
-            self.logger.info(
-                f"获取股票{ts_code_str}从{start_date}到{end_date}的数据"
-            )
+            self.logger.info(f"获取股票{ts_code_str}从{start_date}到{end_date}的数据")
             df = self.pro.daily(
                 ts_code=ts_code_str, start_date=start_date, end_date=end_date
             )
@@ -292,7 +290,9 @@ class StockDataManager:
             actual_days = cursor.fetchone()[0]
 
             # 计算完整性比率
-            completeness_ratio = actual_days / expected_days if expected_days > 0 else 0.0
+            completeness_ratio = (
+                actual_days / expected_days if expected_days > 0 else 0.0
+            )
 
             return completeness_ratio, actual_days, expected_days
 
@@ -304,28 +304,30 @@ class StockDataManager:
                 cursor.close()
 
     def prepare_backtest_data(
-        self, 
-        stock_codes: List[str], 
-        end_date: str = None, 
+        self,
+        stock_codes: List[str],
+        end_date: str = None,
         history_days: int = 1095,  # 默认3年数据
         batch_query_interval: int = 1,  # API调用间隔
-        data_check_threshold: float = 0.9  # 数据完整性阈值
+        data_check_threshold: float = 0.9,  # 数据完整性阈值
     ) -> Dict[str, Any]:
         """准备回测所需的历史数据"""
         if not end_date:
             end_date = datetime.now().strftime("%Y-%m-%d")
-            
-        start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=history_days)).strftime("%Y-%m-%d")
-        
+
+        start_date = (
+            datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=history_days)
+        ).strftime("%Y-%m-%d")
+
         # 转换为tushare格式
         start_date_ts = start_date.replace("-", "")
         end_date_ts = end_date.replace("-", "")
-        
+
         self.logger.info(f"准备从{start_date}到{end_date}的回测数据")
-        
+
         # 批处理股票数据获取
         batch_size = 5  # Tushare API有频率限制，每次获取少量股票
-        
+
         result_stats = {
             "total_stocks": len(stock_codes),
             "processed_stocks": 0,
@@ -346,7 +348,9 @@ class StockDataManager:
 
         for i in range(0, len(stock_codes), batch_size):
             batch_stocks = stock_codes[i : i + batch_size]
-            self.logger.info(f"处理第{i//batch_size + 1}批，股票: {', '.join(batch_stocks)}")
+            self.logger.info(
+                f"处理第{i//batch_size + 1}批，股票: {', '.join(batch_stocks)}"
+            )
 
             for stock in batch_stocks:
                 try:
@@ -356,19 +360,25 @@ class StockDataManager:
                     )
 
                     if completeness >= data_check_threshold:
-                        self.logger.info(f"股票{stock}数据完整性良好({completeness:.2%})，无需更新")
+                        self.logger.info(
+                            f"股票{stock}数据完整性良好({completeness:.2%})，无需更新"
+                        )
                         result_stats["success_stocks"].append(stock)
                         result_stats["processed_stocks"] += 1
                         continue
 
                     # 获取数据并处理
-                    self.logger.info(f"获取股票{stock}的历史数据，完整性: {completeness:.2%}")
+                    self.logger.info(
+                        f"获取股票{stock}的历史数据，完整性: {completeness:.2%}"
+                    )
                     raw_data = self.get_stock_data(
                         ts_codes=[stock], start_date=start_date_ts, end_date=end_date_ts
                     )
 
                     if raw_data.empty:
-                        self.logger.warning(f"未获取到股票{stock}的数据，可能是新上市或已退市")
+                        self.logger.warning(
+                            f"未获取到股票{stock}的数据，可能是新上市或已退市"
+                        )
                         result_stats["failed_stocks"].append(stock)
                         continue
 
@@ -401,7 +411,7 @@ class StockDataManager:
         min_completeness: float = 0.95,
         start_date: str = None,
         end_date: str = None,
-        min_days: int = 365
+        min_days: int = 365,
     ) -> List[str]:
         """获取可用于回测的股票列表(数据完整性达标)"""
         if not end_date:
@@ -430,7 +440,9 @@ class StockDataManager:
             ready_stocks = []
             total = len(all_stocks)
 
-            self.logger.info(f"检查{total}只股票在{start_date}至{end_date}期间的数据完整性")
+            self.logger.info(
+                f"检查{total}只股票在{start_date}至{end_date}期间的数据完整性"
+            )
 
             # 检查每只股票的数据完整性
             for i, stock in enumerate(all_stocks):
@@ -460,31 +472,28 @@ class StockDataManager:
         try:
             self.logger.info("获取股票基本信息...")
             df = self.pro.stock_basic(
-                exchange='',
-                list_status='L',
-                fields='ts_code,name,area,industry,market,list_status,list_date,is_hs'
+                exchange="",
+                list_status="L",
+                fields="ts_code,name,area,industry,market,list_status,list_date,is_hs",
             )
-            
+
             if df.empty:
                 self.logger.warning("未获取到股票基本信息")
                 return 0
-                
+
             # 重命名列
-            df = df.rename(columns={
-                'ts_code': 'stock_code',
-                'name': 'stock_name'
-            })
-            
+            df = df.rename(columns={"ts_code": "stock_code", "name": "stock_name"})
+
             # 处理日期格式
-            if 'list_date' in df.columns:
-                df['list_date'] = pd.to_datetime(df['list_date']).dt.date
-            
+            if "list_date" in df.columns:
+                df["list_date"] = pd.to_datetime(df["list_date"]).dt.date
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
             # 插入数据库
-            return self.insert_data(df, 'StockBasic')
+            return self.insert_data(df, "StockBasic")
         except Exception as e:
             self.logger.error(f"获取股票基本信息失败: {e}")
             return 0
@@ -492,49 +501,51 @@ class StockDataManager:
     def get_stock_valuation(self, trade_date=None) -> int:
         """获取股票估值数据"""
         if not trade_date:
-            trade_date = datetime.now().strftime('%Y%m%d')
+            trade_date = datetime.now().strftime("%Y%m%d")
             # 如果是周末或节假日，获取最近的交易日
             try:
                 recent_trade_dates = self.get_available_trade_dates(
-                    (datetime.now() - timedelta(days=10)).strftime('%Y%m%d'),
-                    datetime.now().strftime('%Y%m%d')
+                    (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
+                    datetime.now().strftime("%Y%m%d"),
                 )
                 if recent_trade_dates:
                     trade_date = recent_trade_dates[-1]
             except:
                 pass
-            
+
         try:
             self.logger.info(f"获取{trade_date}的股票估值数据...")
             df = self.pro.daily_basic(
                 trade_date=trade_date,
-                fields='ts_code,trade_date,pe,pb,ps,total_mv,circ_mv,turnover_rate'
+                fields="ts_code,trade_date,pe,pb,ps,total_mv,circ_mv,turnover_rate",
             )
-            
+
             if df.empty:
                 self.logger.warning(f"未获取到{trade_date}的股票估值数据")
                 return 0
-                
+
             # 重命名列
-            df = df.rename(columns={
-                'ts_code': 'stock_code',
-                'pe': 'pe_ratio',
-                'pb': 'pb_ratio',
-                'ps': 'ps_ratio',
-                'total_mv': 'market_cap',
-                'circ_mv': 'circulating_market_cap',
-                'turnover_rate': 'turnover_ratio'
-            })
-            
+            df = df.rename(
+                columns={
+                    "ts_code": "stock_code",
+                    "pe": "pe_ratio",
+                    "pb": "pb_ratio",
+                    "ps": "ps_ratio",
+                    "total_mv": "market_cap",
+                    "circ_mv": "circulating_market_cap",
+                    "turnover_rate": "turnover_ratio",
+                }
+            )
+
             # 转换日期格式
-            df['trade_date'] = pd.to_datetime(df['trade_date']).dt.date
-            
+            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
             # 插入数据库
-            return self.insert_data(df, 'StockValuation')
+            return self.insert_data(df, "StockValuation")
         except Exception as e:
             self.logger.error(f"获取股票估值数据失败: {e}")
             return 0
@@ -554,52 +565,63 @@ class StockDataManager:
                 period = f"{year}0630"
             else:
                 period = f"{year}0930"
-        
+
         try:
             self.logger.info(f"获取{period}的资产负债表数据...")
-            df = self.pro.balancesheet(
+            df = self.pro.balancesheet_vip(
                 period=period,
-                fields='ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_assets,total_liab,total_cur_assets,total_cur_liab,fixed_assets,monetary_cap,total_hldr_eqy_inc_min_int'
+                fields="ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_assets,total_liab,total_cur_assets,total_cur_liab,fixed_assets,monetary_cap,total_hldr_eqy_inc_min_int",
             )
-            
+
             if df.empty:
                 self.logger.warning(f"未获取到{period}的资产负债表数据")
                 return 0
-                
+
             # 重命名列
-            df = df.rename(columns={
-                'ts_code': 'stock_code',
-                'end_date': 'report_period',
-                'ann_date': 'announcement_date',
-                'total_liab': 'total_liability',
-                'total_cur_assets': 'total_current_assets',
-                'total_cur_liab': 'total_current_liability',
-                'monetary_cap': 'cash_equivalents',
-                'total_hldr_eqy_inc_min_int': 'total_equity'
-            })
-            
+            df = df.rename(
+                columns={
+                    "ts_code": "stock_code",
+                    "end_date": "report_period",
+                    "ann_date": "announcement_date",
+                    "total_liab": "total_liability",
+                    "total_cur_assets": "total_current_assets",
+                    "total_cur_liab": "total_current_liability",
+                    "monetary_cap": "cash_equivalents",
+                    "total_hldr_eqy_inc_min_int": "total_equity",
+                }
+            )
+
             # 转换日期格式
-            df['report_period'] = pd.to_datetime(df['report_period']).dt.date
-            df['announcement_date'] = pd.to_datetime(df['announcement_date']).dt.date
-            
+            df["report_period"] = pd.to_datetime(df["report_period"]).dt.date
+            df["announcement_date"] = pd.to_datetime(df["announcement_date"]).dt.date
+
             # 选择需要的列
-            cols = ['stock_code', 'report_period', 'announcement_date', 'total_assets', 
-                    'total_liability', 'total_current_assets', 'total_current_liability', 
-                    'fixed_assets', 'cash_equivalents', 'total_equity']
-            
+            cols = [
+                "stock_code",
+                "report_period",
+                "announcement_date",
+                "total_assets",
+                "total_liability",
+                "total_current_assets",
+                "total_current_liability",
+                "fixed_assets",
+                "cash_equivalents",
+                "total_equity",
+            ]
+
             # 确保所有列都存在
             for col in cols:
                 if col not in df.columns:
                     df[col] = None
-            
+
             df = df[cols]
-            
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
             # 插入数据库
-            return self.insert_data(df, 'BalanceSheet')
+            return self.insert_data(df, "BalanceSheet")
         except Exception as e:
             self.logger.error(f"获取资产负债表数据失败: {e}")
             return 0
@@ -619,104 +641,139 @@ class StockDataManager:
                 period = f"{year}0630"
             else:
                 period = f"{year}0930"
-        
+
         try:
             self.logger.info(f"获取{period}的利润表数据...")
-            df = self.pro.income(
+            df = self.pro.income_vip(
                 period=period,
-                fields='ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_revenue,operate_profit,total_profit,n_income,basic_eps'
+                fields="ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_revenue,operate_profit,total_profit,n_income,basic_eps",
             )
-            
+
             if df.empty:
                 self.logger.warning(f"未获取到{period}的利润表数据")
                 return 0
-                
+
             # 重命名列
-            df = df.rename(columns={
-                'ts_code': 'stock_code',
-                'end_date': 'report_period',
-                'ann_date': 'announcement_date',
-                'operate_profit': 'operating_profit',
-                'n_income': 'net_profit',
-                'basic_eps': 'eps_basic'
-            })
-            
+            df = df.rename(
+                columns={
+                    "ts_code": "stock_code",
+                    "end_date": "report_period",
+                    "ann_date": "announcement_date",
+                    "operate_profit": "operating_profit",
+                    "n_income": "net_profit",
+                    "basic_eps": "eps_basic",
+                }
+            )
+
             # 转换日期格式
-            df['report_period'] = pd.to_datetime(df['report_period']).dt.date
-            df['announcement_date'] = pd.to_datetime(df['announcement_date']).dt.date
-            
+            df["report_period"] = pd.to_datetime(df["report_period"]).dt.date
+            df["announcement_date"] = pd.to_datetime(df["announcement_date"]).dt.date
+
             # 选择需要的列
-            cols = ['stock_code', 'report_period', 'announcement_date', 'total_revenue', 
-                    'operating_profit', 'total_profit', 'net_profit', 'eps_basic']
-            
+            cols = [
+                "stock_code",
+                "report_period",
+                "announcement_date",
+                "total_revenue",
+                "operating_profit",
+                "total_profit",
+                "net_profit",
+                "eps_basic",
+            ]
+
             # 确保所有列都存在
             for col in cols:
                 if col not in df.columns:
                     df[col] = None
-                    
+
             df = df[cols]
-            
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
             # 插入数据库
-            return self.insert_data(df, 'IncomeStatement')
+            return self.insert_data(df, "IncomeStatement")
         except Exception as e:
             self.logger.error(f"获取利润表数据失败: {e}")
             return 0
 
-    def get_index_component(self, index_code='000300.SH') -> int:
+    def get_index_component(self, index_code="000300.SH") -> int:
         """获取指数成分股数据"""
         try:
             self.logger.info(f"获取{index_code}的成分股数据...")
-            
-            # 获取最近的交易日期
-            recent_trade_dates = self.get_available_trade_dates(
-                (datetime.now() - timedelta(days=10)).strftime('%Y%m%d'),
-                datetime.now().strftime('%Y%m%d')
-            )
-            
-            if not recent_trade_dates:
-                self.logger.warning("无法获取最近的交易日期")
-                return 0
-            
-            trade_date = recent_trade_dates[-1]
-            
-            # 获取指数成分股
+
+            # 使用一个已知存在数据的历史月份（固定为2023年最后一个完整月份）
+            # 这样保证数据稳定可用
+            start_date = "20231201"
+            end_date = "20231231"
+
+            self.logger.info(f"使用日期范围：{start_date}至{end_date}")
+
+            # 按文档建议传入月度开始和结束日期
             df = self.pro.index_weight(
-                index_code=index_code,
-                trade_date=trade_date
+                index_code=index_code, start_date=start_date, end_date=end_date
             )
-            
+
             if df.empty:
                 self.logger.warning(f"未获取到{index_code}的成分股数据")
-                return 0
-                
+
+                # 尝试另一种指数代码格式（沪深300可能有两种代码表示）
+                alt_code = "399300.SZ" if index_code == "000300.SH" else index_code
+                if alt_code != index_code:
+                    self.logger.info(f"尝试使用替代指数代码: {alt_code}")
+                    df = self.pro.index_weight(
+                        index_code=alt_code, start_date=start_date, end_date=end_date
+                    )
+
+                if df.empty:
+                    self.logger.warning(
+                        f"仍未获取到指数成分股数据，请检查指数代码或API权限"
+                    )
+                    return 0
+
+            # 获取最新交易日的数据（通常是当月最后一个交易日）
+            latest_date = df["trade_date"].max()
+            df = df[df["trade_date"] == latest_date]
+
+            self.logger.info(
+                f"成功获取{len(df)}只{index_code}的成分股（{latest_date}）"
+            )
+
             # 重命名列
-            df = df.rename(columns={
-                'con_code': 'stock_code'
-            })
-            
+            df = df.rename(columns={"con_code": "stock_code"})
+
             # 添加指数代码
-            df['index_code'] = index_code
-            df['is_current'] = True
-            
+            df["index_code"] = index_code
+            df["is_current"] = True
+
             # 确保 weight 列存在
-            if 'weight' not in df.columns:
-                df['weight'] = 0
-            
+            if "weight" not in df.columns:
+                df["weight"] = 0
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
+            # 在插入数据库前显式选择需要的列
+            needed_columns = [
+                "index_code",
+                "stock_code",
+                "weight",
+                "is_current",
+                "data_source",
+                "collect_time",
+            ]
+            df = df[needed_columns]
+
             # 清理旧数据
             self.delete_old_index_components(index_code)
-            
+
             # 插入数据库
-            return self.insert_data(df, 'IndexComponent')
+            return self.insert_data(df, "IndexComponent")
         except Exception as e:
             self.logger.error(f"获取指数成分股数据失败: {e}")
+            traceback.print_exc()  # 打印完整错误堆栈，方便调试
             return 0
 
     def delete_old_index_components(self, index_code):
@@ -735,71 +792,80 @@ class StockDataManager:
             if cursor:
                 cursor.close()
 
-    def get_trading_calendar(self, exchange='SSE', start_date=None, end_date=None) -> int:
+    def get_trading_calendar(
+        self, exchange="SSE", start_date=None, end_date=None
+    ) -> int:
         """获取交易日历"""
         if not start_date:
             # 默认获取当年和下一年的日历
             today = datetime.now()
             start_date = f"{today.year}0101"
-            
+
         if not end_date:
             today = datetime.now()
             end_date = f"{today.year + 1}1231"
-            
+
         try:
             self.logger.info(f"获取{exchange}从{start_date}到{end_date}的交易日历...")
-            
+
             df = self.pro.trade_cal(
-                exchange=exchange,
-                start_date=start_date,
-                end_date=end_date
+                exchange=exchange, start_date=start_date, end_date=end_date
             )
-            
+
             if df.empty:
                 self.logger.warning(f"未获取到交易日历数据")
                 return 0
-                
+
             # 转换日期格式
-            df['cal_date'] = pd.to_datetime(df['cal_date']).dt.date
-            if 'pretrade_date' in df.columns:
-                df['pretrade_date'] = pd.to_datetime(df['pretrade_date']).dt.date
+            df["cal_date"] = pd.to_datetime(df["cal_date"]).dt.date
+            if "pretrade_date" in df.columns:
+                df["pretrade_date"] = pd.to_datetime(df["pretrade_date"]).dt.date
             else:
-                df['pretrade_date'] = None
-                
+                df["pretrade_date"] = None
+
             # 添加数据源和采集时间
-            df['data_source'] = 'tushare'
-            df['collect_time'] = datetime.now()
-            
+            df["data_source"] = "tushare"
+            df["collect_time"] = datetime.now()
+
             # 插入数据库
-            return self.insert_data(df, 'TradingCalendar')
+            return self.insert_data(df, "TradingCalendar")
         except Exception as e:
             self.logger.error(f"获取交易日历失败: {e}")
             return 0
 
-    def insert_data(self, df: pd.DataFrame, table_name: str, on_duplicate='update') -> int:
+    def insert_data(
+        self, df: pd.DataFrame, table_name: str, on_duplicate="update"
+    ) -> int:
         """通用数据插入方法"""
         if df.empty:
             return 0
-            
+
         try:
+            # 在插入前处理 NaN 值，将其替换为 None（对应MySQL中的 NULL）
+            df = df.replace({float("nan"): None, pd.NA: None})
+
             cursor = self.connection.cursor()
-            
+
             # 构建SQL
             columns = df.columns.tolist()
-            placeholders = ', '.join(['%s'] * len(columns))
-            
+            placeholders = ", ".join(["%s"] * len(columns))
+
             sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
-            
-            if on_duplicate == 'update':
-                updates = [f"{col}=VALUES({col})" for col in columns if col not in ['collect_time']]
+
+            if on_duplicate == "update":
+                updates = [
+                    f"{col}=VALUES({col})"
+                    for col in columns
+                    if col not in ["collect_time"]
+                ]
                 if updates:
                     sql += f" ON DUPLICATE KEY UPDATE {', '.join(updates)}"
-            
+
             # 执行批量插入
             data = [tuple(x) for x in df.values]
             cursor.executemany(sql, data)
             self.connection.commit()
-            
+
             inserted = cursor.rowcount
             self.logger.info(f"成功插入/更新{inserted}条记录到{table_name}表")
             return inserted
@@ -813,27 +879,27 @@ class StockDataManager:
             if cursor:
                 cursor.close()
 
-    def get_index_stocks(self, index_code='000300.SH') -> List[str]:
+    def get_index_stocks(self, index_code="000300.SH") -> List[str]:
         """获取指定指数的成分股列表"""
         try:
             cursor = self.connection.cursor()
-            
+
             query = """
             SELECT stock_code FROM IndexComponent 
             WHERE index_code = %s AND is_current = TRUE
             """
-            
+
             cursor.execute(query, (index_code,))
             result = cursor.fetchall()
-            
+
             if not result:
                 # 如果数据库中没有，就从API获取
                 self.get_index_component(index_code)
-                
+
                 # 再次查询
                 cursor.execute(query, (index_code,))
                 result = cursor.fetchall()
-                
+
             stock_list = [row[0] for row in result]
             self.logger.info(f"获取到{index_code}的{len(stock_list)}只成分股")
             return stock_list
@@ -850,16 +916,16 @@ def load_config(config_file="config.json"):
     try:
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"配置文件不存在: {config_file}")
-            
+
         with open(config_file, "r", encoding="utf-8") as f:
             config = json.load(f)
-            
+
         # 验证必需字段
         if "db_password" not in config:
             raise ValueError("配置文件缺少数据库密码")
         if "tushare_token" not in config:
             raise ValueError("配置文件缺少Tushare token")
-            
+
         return config
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}")
@@ -875,152 +941,102 @@ def main():
     parser.add_argument("--days", type=int, default=1095, help="历史数据天数")
     parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument("--check", action="store_true", help="检查哪些股票可用于回测")
-    parser.add_argument("--completeness", type=float, default=0.95, help="数据完整性阈值")
-    parser.add_argument("--config", type=str, default="config.json", help="配置文件路径")
-    
-    # 新增的参数
-    parser.add_argument("--stock-basic", action="store_true", help="获取股票基本信息")
-    parser.add_argument("--valuation", action="store_true", help="获取股票估值数据")
-    parser.add_argument("--balance", action="store_true", help="获取资产负债表数据")
-    parser.add_argument("--income", action="store_true", help="获取利润表数据")
-    parser.add_argument("--index", type=str, help="获取指定指数的成分股，例如：000300.SH (沪深300)")
-    parser.add_argument("--calendar", action="store_true", help="获取交易日历")
-    parser.add_argument("--full-prepare", action="store_true", help="全面准备所有必要的回测数据")
-    parser.add_argument("--index-stocks", action="store_true", help="使用指数成分股作为回测股票池")
-    
+    parser.add_argument(
+        "--index", type=str, help="使用指定指数的成分股，例如：000300.SH (沪深300)"
+    )
+    parser.add_argument(
+        "--completeness", type=float, default=0.95, help="数据完整性阈值"
+    )
+    parser.add_argument(
+        "--config", type=str, default="config.json", help="配置文件路径"
+    )
+
     args = parser.parse_args()
 
     try:
         # 加载配置
         config = load_config(args.config)
-        
+
         # 创建数据管理器
         stock_manager = StockDataManager(
-            db_password=config["db_password"],
-            tushare_token=config["tushare_token"]
+            db_password=config["db_password"], tushare_token=config["tushare_token"]
         )
-        
+
         # 连接数据库
         stock_manager.connect_database()
-        
+
         # 默认股票列表
         default_stocks = [
-            "000001.SZ", "000002.SZ", "600000.SH", 
-            "600036.SH", "600519.SH", "000858.SZ"
+            "000001.SZ",
+            "000002.SZ",
+            "600000.SH",
+            "600036.SH",
+            "600519.SH",
+            "000858.SZ",
         ]
 
-        # 全面准备所有数据
-        if args.full_prepare:
-            logger.info("开始全面准备回测所需的数据...")
-            
-            # 1. 获取股票基本信息
-            stock_manager.get_stock_basic()
-            
-            # 2. 获取交易日历
-            stock_manager.get_trading_calendar()
-            
-            # 3. 获取最近交易日的估值数据
-            stock_manager.get_stock_valuation()
-            
-            # 4. 获取最近季度的财务数据
-            stock_manager.get_balance_sheet()
-            stock_manager.get_income_statement()
-            
-            # 5. 获取指数成分股
-            stock_manager.get_index_component('000300.SH')  # 沪深300
-            stock_manager.get_index_component('000905.SH')  # 中证500
-            stock_manager.get_index_component('399006.SZ')  # 创业板指数
-            
-            # 6. 准备回测所需股票数据
+        if args.check:
+            # 检查可用于回测的股票
+            end_date = args.end or datetime.now().strftime("%Y-%m-%d")
+
+            ready_stocks = stock_manager.get_backtest_ready_stocks(
+                min_completeness=args.completeness,
+                end_date=end_date,
+                min_days=args.days,
+            )
+
+            if ready_stocks:
+                # 保存结果到文件
+                result_file = (
+                    f"backtest_ready_stocks_{datetime.now().strftime('%Y%m%d')}.txt"
+                )
+                with open(result_file, "w") as f:
+                    f.write("\n".join(ready_stocks))
+                logger.info(
+                    f"找到{len(ready_stocks)}只可用于回测的股票，已保存至{result_file}"
+                )
+            else:
+                logger.warning("未找到符合条件的股票")
+        else:
+            # 准备回测数据
             stock_codes = []
             if args.stocks:
                 stock_codes = args.stocks.split(",")
-            elif args.index_stocks:
-                # 使用沪深300成分股
-                stock_codes = stock_manager.get_index_stocks('000300.SH')
+            elif args.index:
+                # 使用指定指数成分股
+                stock_manager.get_index_component(args.index)  # 确保指数成分股数据最新
+                stock_codes = stock_manager.get_index_stocks(args.index)
             else:
                 stock_codes = default_stocks
-                
-            if stock_codes:
-                results = stock_manager.prepare_backtest_data(
-                    stock_codes=stock_codes, 
-                    end_date=args.end, 
-                    history_days=args.days
-                )
-                
-                logger.info(f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票")
-            
-        else:
-            # 单独的功能执行
-            if args.stock_basic:
-                count = stock_manager.get_stock_basic()
-                logger.info(f"成功获取并存储{count}只股票的基本信息")
-                
-            if args.valuation:
-                count = stock_manager.get_stock_valuation()
-                logger.info(f"成功获取并存储{count}条股票估值数据")
-                
-            if args.balance:
-                count = stock_manager.get_balance_sheet()
-                logger.info(f"成功获取并存储{count}条资产负债表数据")
-                
-            if args.income:
-                count = stock_manager.get_income_statement()
-                logger.info(f"成功获取并存储{count}条利润表数据")
-                
-            if args.index:
-                count = stock_manager.get_index_component(args.index)
-                logger.info(f"成功获取并存储{count}只{args.index}的成分股")
-                
-            if args.calendar:
-                count = stock_manager.get_trading_calendar()
-                logger.info(f"成功获取并存储{count}条交易日历数据")
-                
-            if args.check:
-                # 检查可用于回测的股票
-                end_date = args.end or datetime.now().strftime("%Y-%m-%d")
-                
-                ready_stocks = stock_manager.get_backtest_ready_stocks(
-                    min_completeness=args.completeness,
-                    end_date=end_date,
-                    min_days=args.days
-                )
 
-                if ready_stocks:
-                    # 保存结果到文件
-                    result_file = f"backtest_ready_stocks_{datetime.now().strftime('%Y%m%d')}.txt"
-                    with open(result_file, "w") as f:
-                        f.write("\n".join(ready_stocks))
-                    logger.info(f"找到{len(ready_stocks)}只可用于回测的股票，已保存至{result_file}")
-                else:
-                    logger.warning("未找到符合条件的股票")
+            # 准备所有必要的数据
+            logger.info("准备回测所需的完整数据...")
 
-            if args.backtest or (not any([args.stock_basic, args.valuation, args.balance, 
-                                          args.income, args.index, args.calendar, 
-                                          args.check, args.full_prepare])):
-                # 准备回测数据
-                if args.stocks:
-                    stock_codes = args.stocks.split(",")
-                elif args.index_stocks:
-                    # 使用沪深300成分股
-                    stock_codes = stock_manager.get_index_stocks('000300.SH')
-                else:
-                    stock_codes = default_stocks
+            # 1. 获取基础数据表
+            stock_manager.get_stock_basic()
+            stock_manager.get_trading_calendar()
 
-                # 准备数据
-                results = stock_manager.prepare_backtest_data(
-                    stock_codes=stock_codes, 
-                    end_date=args.end, 
-                    history_days=args.days
-                )
-                
-                logger.info(f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票")
+            # 2. 获取最近交易日的估值数据
+            stock_manager.get_stock_valuation()
+
+            # 3. 获取最近季度的财务数据
+            stock_manager.get_balance_sheet()
+            stock_manager.get_income_statement()
+
+            # 4. 准备股票市场数据
+            results = stock_manager.prepare_backtest_data(
+                stock_codes=stock_codes, end_date=args.end, history_days=args.days
+            )
+
+            logger.info(
+                f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票"
+            )
 
     except Exception as e:
         logger.error(f"处理过程中发生错误: {e}")
         logger.error(traceback.format_exc())
     finally:
-        if 'stock_manager' in locals():
+        if "stock_manager" in locals():
             stock_manager.close_database()
 
 
