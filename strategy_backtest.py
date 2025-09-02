@@ -44,14 +44,14 @@ DB_DEFAULTS = {
     "port": 3306,
     "user": "root",
     "database": "quantitative_trading",
-    "charset": "utf8mb4"
+    "charset": "utf8mb4",
 }
 
 # 回测默认设置
 BACKTEST_DEFAULTS = {
     "output_dir": "backtest_results",
     "plot_results": True,
-    "debug_mode": False
+    "debug_mode": False,
 }
 
 
@@ -88,15 +88,15 @@ class DatabaseManager:
         """连接数据库"""
         try:
             self.logger.info("连接数据库...")
-            
+
             # 获取默认转换器并进行自定义
             conv = pymysql.converters.conversions.copy()
             conv[datetime.date] = pymysql.converters.escape_date
-            
+
             # 添加数值类型转换
             conv[pymysql.FIELD_TYPE.DECIMAL] = float
             conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
-            
+
             # 使用标准连接方式
             self.connection = pymysql.connect(
                 host=DB_DEFAULTS["host"],
@@ -106,11 +106,11 @@ class DatabaseManager:
                 database=DB_DEFAULTS["database"],
                 charset=DB_DEFAULTS["charset"],
                 autocommit=False,
-                conv=conv
+                conv=conv,
             )
-            
+
             self.logger.info("数据库连接成功")
-            
+
         except Exception as e:
             self.logger.error(f"连接数据库失败: {e}")
             raise
@@ -154,7 +154,8 @@ class DatabaseManager:
             SELECT sc.condition_id, sc.strategy_id, sc.indicator_id, 
                    sc.condition_type, sc.threshold_min, sc.threshold_max,
                    sc.signal_action, sc.condition_order,
-                   ti.indicator_name, ti.calculation_method, ti.default_period
+                   ti.indicator_name, ti.calculation_method, ti.default_period,
+                   ti.indicator_type  -- 添加指标类型
             FROM StrategyCondition sc
             JOIN TechnicalIndicator ti ON sc.indicator_id = ti.indicator_id
             WHERE sc.strategy_id = %s
@@ -289,7 +290,7 @@ class DatabaseManager:
                 report_data.get("profit_loss_ratio"),
                 report_data["trade_count"],
                 datetime.now(),
-                "completed"
+                "completed",
             )
 
             cursor.execute(query, params)
@@ -357,6 +358,7 @@ class DynamicBacktestStrategy(bt.Strategy):
 
     params = (
         ("strategy_conditions", []),  # 策略条件列表
+        ("fundamental_data", {}),  # 基本面数据
         ("debug_mode", False),  # 调试模式
     )
 
@@ -366,65 +368,82 @@ class DynamicBacktestStrategy(bt.Strategy):
         self.buyprice = None  # 买入价格
         self.buycomm = None  # 买入手续费
 
+        # 日志
+        self.logger = logger
+
         # 计算所需的技术指标
         self.indicators = {}
+        # 初始化基本面数据
+        self.fundamental_data = self.params.fundamental_data
+
         self.setup_indicators()
 
         # 初始化交易记录
         self.trades = []
 
-        # 日志
-        self.logger = logger
-
     def setup_indicators(self):
         """根据策略条件设置技术指标"""
         # 用于记录已添加的指标，避免重复添加
         added_indicators = set()
+        # 分别存储技术指标和基本面指标
+        self.indicators = {}  # 技术指标
+        self.fundamental_data = {}  # 基本面指标
 
         for condition in self.params.strategy_conditions:
             indicator_id = condition["indicator_id"]
+            indicator_type = condition.get(
+                "indicator_type", "technical"
+            )  # 获取指标类型
 
             # 如果指标已添加，则跳过
             if indicator_id in added_indicators:
                 continue
 
-            # 根据指标类型添加相应的技术指标
-            if indicator_id == "RSI":
-                period = condition.get("default_period", 14)
-                self.indicators[indicator_id] = bt.indicators.RSI(
-                    self.data.close, period=period
-                )
-
-            elif indicator_id == "MACD":
-                self.indicators[indicator_id] = bt.indicators.MACD(
-                    self.data.close, period_me1=12, period_me2=26, period_signal=9
-                )
-                self.indicators["MACD_signal"] = self.indicators[indicator_id].signal
-
-            elif indicator_id == "BOLL":
-                period = condition.get("default_period", 20)
-                self.indicators[indicator_id] = bt.indicators.BollingerBands(
-                    self.data.close, period=period
-                )
-                self.indicators["BOLL_top"] = self.indicators[indicator_id].top
-                self.indicators["BOLL_mid"] = self.indicators[indicator_id].mid
-                self.indicators["BOLL_bot"] = self.indicators[indicator_id].bot
-
-            elif indicator_id.startswith("MA"):
-                # 例如MA5、MA20等
-                period = int(indicator_id[2:])
-                self.indicators[indicator_id] = bt.indicators.SMA(
-                    self.data.close, period=period
-                )
-
-            elif indicator_id == "VOLUME_MA":
-                period = condition.get("default_period", 10)
-                self.indicators[indicator_id] = bt.indicators.SMA(
-                    self.data.volume, period=period
+            # 根据指标类型分别处理
+            if indicator_type == "technical":
+                self._setup_technical_indicator(indicator_id, condition)
+            elif indicator_type == "fundamental":
+                # 对于基本面指标，只记录需要加载，稍后在run_backtest中处理
+                self.fundamental_data[indicator_id] = None
+                self.logger.info(
+                    f"基本面指标 {indicator_id} 将在策略初始化后从数据库加载"
                 )
 
             # 将指标添加到已添加集合中
             added_indicators.add(indicator_id)
+
+    def _setup_technical_indicator(self, indicator_id, condition):
+        """设置技术指标"""
+        # 根据指标ID设置相应的技术指标
+        if indicator_id == "RSI":
+            period = condition.get("default_period", 14)
+            self.indicators[indicator_id] = bt.indicators.RSI(
+                self.data.close, period=period
+            )
+        elif indicator_id == "MACD":
+            self.indicators[indicator_id] = bt.indicators.MACD(
+                self.data.close, period_me1=12, period_me2=26, period_signal=9
+            )
+            self.indicators["MACD_signal"] = self.indicators[indicator_id].signal
+        elif indicator_id == "BOLL":
+            period = condition.get("default_period", 20)
+            self.indicators[indicator_id] = bt.indicators.BollingerBands(
+                self.data.close, period=period
+            )
+            self.indicators["BOLL_top"] = self.indicators[indicator_id].top
+            self.indicators["BOLL_mid"] = self.indicators[indicator_id].mid
+            self.indicators["BOLL_bot"] = self.indicators[indicator_id].bot
+        elif indicator_id.startswith("MA") and indicator_id[2:].isdigit():
+            # 确保是真正的移动平均线指标，而不是MARKET_CAP等
+            period = int(indicator_id[2:])
+            self.indicators[indicator_id] = bt.indicators.SMA(
+                self.data.close, period=period
+            )
+        elif indicator_id == "VOLUME_MA":
+            period = condition.get("default_period", 10)
+            self.indicators[indicator_id] = bt.indicators.SMA(
+                self.data.volume, period=period
+            )
 
     def check_conditions(self, action_type):
         """检查指定动作类型的所有条件是否满足"""
@@ -442,85 +461,111 @@ class DynamicBacktestStrategy(bt.Strategy):
 
         for condition in action_conditions:
             indicator_id = condition["indicator_id"]
+            indicator_type = condition.get("indicator_type", "technical")
             condition_type = condition["condition_type"]
             threshold_min = condition.get("threshold_min")
             threshold_max = condition.get("threshold_max")
 
-            # 获取指标当前值
-            if indicator_id in self.indicators:
+            # 区分基本面指标和技术指标
+            if indicator_type == "technical" and indicator_id in self.indicators:
+                # 处理技术指标
                 indicator_value = self.indicators[indicator_id][0]
+            elif (
+                indicator_type == "fundamental"
+                and indicator_id in self.fundamental_data
+            ):
+                # 处理基本面指标
+                current_date = self.data.datetime.date(0)
+                indicator_value = self._get_fundamental_value(
+                    indicator_id, current_date
+                )
+                if indicator_value is None:
+                    # 基本面数据不可用，条件不满足
+                    conditions_met = False
+                    break
+            else:
+                # 指标不存在，条件不满足
+                conditions_met = False
+                break
 
-                # 根据条件类型检查条件
-                if condition_type == "greater":
-                    if threshold_min is not None and not (
-                        indicator_value > threshold_min
-                    ):
+            # 根据条件类型检查条件
+            if condition_type == "greater":
+                if threshold_min is not None and not (indicator_value > threshold_min):
+                    conditions_met = False
+                    break
+            elif condition_type == "less":
+                if threshold_max is not None and not (indicator_value < threshold_max):
+                    conditions_met = False
+                    break
+            elif condition_type == "between":
+                if threshold_min is not None and threshold_max is not None:
+                    if not (threshold_min <= indicator_value <= threshold_max):
                         conditions_met = False
                         break
+            elif condition_type == "cross_up":
+                # 交叉上穿需要检查前一天和当前的值
+                if indicator_id.startswith("MA"):
+                    # 例如：MA5上穿MA20
+                    # 假设condition的threshold_min中存储了被上穿的指标
+                    cross_indicator = threshold_min
+                    if cross_indicator in self.indicators:
+                        # 检查昨天的交叉情况
+                        if len(self) > 1:  # 确保有足够的数据点
+                            yesterday_indicator = self.indicators[indicator_id][-1]
+                            yesterday_cross = self.indicators[cross_indicator][-1]
+                            today_indicator = self.indicators[indicator_id][0]
+                            today_cross = self.indicators[cross_indicator][0]
 
-                elif condition_type == "less":
-                    if threshold_max is not None and not (
-                        indicator_value < threshold_max
-                    ):
-                        conditions_met = False
-                        break
-
-                elif condition_type == "between":
-                    if threshold_min is not None and threshold_max is not None:
-                        if not (threshold_min <= indicator_value <= threshold_max):
+                            if not (
+                                yesterday_indicator < yesterday_cross
+                                and today_indicator > today_cross
+                            ):
+                                conditions_met = False
+                                break
+                        else:
                             conditions_met = False
                             break
 
-                elif condition_type == "cross_up":
-                    # 交叉上穿需要检查前一天和当前的值
-                    if indicator_id.startswith("MA"):
-                        # 例如：MA5上穿MA20
-                        # 假设condition的threshold_min中存储了被上穿的指标
-                        cross_indicator = threshold_min
-                        if cross_indicator in self.indicators:
-                            # 检查昨天的交叉情况
-                            if len(self) > 1:  # 确保有足够的数据点
-                                yesterday_indicator = self.indicators[indicator_id][-1]
-                                yesterday_cross = self.indicators[cross_indicator][-1]
-                                today_indicator = self.indicators[indicator_id][0]
-                                today_cross = self.indicators[cross_indicator][0]
+            elif condition_type == "cross_down":
+                # 类似cross_up的逻辑，但方向相反
+                if indicator_id.startswith("MA"):
+                    cross_indicator = threshold_max
+                    if cross_indicator in self.indicators:
+                        if len(self) > 1:
+                            yesterday_indicator = self.indicators[indicator_id][-1]
+                            yesterday_cross = self.indicators[cross_indicator][-1]
+                            today_indicator = self.indicators[indicator_id][0]
+                            today_cross = self.indicators[cross_indicator][0]
 
-                                if not (
-                                    yesterday_indicator < yesterday_cross
-                                    and today_indicator > today_cross
-                                ):
-                                    conditions_met = False
-                                    break
-                            else:
+                            if not (
+                                yesterday_indicator > yesterday_cross
+                                and today_indicator < today_cross
+                            ):
                                 conditions_met = False
                                 break
-
-                elif condition_type == "cross_down":
-                    # 类似cross_up的逻辑，但方向相反
-                    if indicator_id.startswith("MA"):
-                        cross_indicator = threshold_max
-                        if cross_indicator in self.indicators:
-                            if len(self) > 1:
-                                yesterday_indicator = self.indicators[indicator_id][-1]
-                                yesterday_cross = self.indicators[cross_indicator][-1]
-                                today_indicator = self.indicators[indicator_id][0]
-                                today_cross = self.indicators[cross_indicator][0]
-
-                                if not (
-                                    yesterday_indicator > yesterday_cross
-                                    and today_indicator < today_cross
-                                ):
-                                    conditions_met = False
-                                    break
-                            else:
-                                conditions_met = False
-                                break
+                        else:
+                            conditions_met = False
+                            break
             else:
                 # 如果指标不存在，条件不满足
                 conditions_met = False
                 break
 
         return conditions_met
+
+    def _get_fundamental_value(self, indicator_id, date):
+        """获取特定日期的基本面数据值"""
+        if (
+            indicator_id not in self.fundamental_data
+            or self.fundamental_data[indicator_id] is None
+        ):
+            return None
+
+        # 将日期转为字符串作为字典键
+        date_str = date.strftime("%Y-%m-%d")
+
+        # 从预先加载的基本面数据中查找
+        return self.fundamental_data[indicator_id].get(date_str, None)
 
     def next(self):
         """每个数据点的主策略逻辑"""
@@ -617,7 +662,7 @@ class BacktestEngine:
         end_date: str,
         initial_cash: float = 100000.0,
         user_id: str = "admin_001",
-        debug_mode: bool = False
+        debug_mode: bool = False,
     ) -> Dict[str, Any]:
         """
         运行回测
@@ -665,9 +710,26 @@ class BacktestEngine:
         cerebro.broker.setcommission(commission=0.0005)
 
         # 7. 添加策略
+        # 检查是否需要基本面数据
+        needs_fundamental = False
+        for condition in strategy_conditions:
+            if condition.get("indicator_type") == "fundamental":
+                needs_fundamental = True
+                break
+
+        # 如果需要，加载基本面数据
+        fundamental_data = {}
+        if needs_fundamental:
+            self.logger.info("检测到基本面指标，正在加载基本面数据...")
+            fundamental_data = self._load_fundamental_data(
+                stock_code, start_date, end_date, strategy_conditions
+            )
+
+        # 在添加策略时传入基本面数据
         cerebro.addstrategy(
             DynamicBacktestStrategy,
             strategy_conditions=strategy_conditions,
+            fundamental_data=fundamental_data,  # 添加基本面数据
             debug_mode=debug_mode,
         )
 
@@ -696,6 +758,171 @@ class BacktestEngine:
             self.plot_results(cerebro, strategy_info["strategy_name"], stock_code)
 
         return backtest_result
+
+    def _load_fundamental_data(
+        self, stock_code, start_date, end_date, strategy_conditions
+    ):
+        """加载基本面数据"""
+        fundamental_data = {}
+
+        # 获取所有需要的基本面指标
+        needed_indicators = []
+        for condition in strategy_conditions:
+            if condition.get("indicator_type") == "fundamental":
+                needed_indicators.append(condition["indicator_id"])
+
+        # 为每个指标加载数据
+        for indicator_id in needed_indicators:
+            if indicator_id == "MARKET_CAP":
+                # 从StockValuation表加载市值数据
+                data = self._load_market_cap_data(stock_code, start_date, end_date)
+            elif indicator_id == "PB_RATIO":
+                # 从StockValuation表加载市净率数据
+                data = self._load_pb_ratio_data(stock_code, start_date, end_date)
+            elif indicator_id == "DEBT_RATIO":
+                # 从BalanceSheet表加载负债率数据
+                data = self._load_debt_ratio_data(stock_code, start_date, end_date)
+            elif indicator_id == "CURRENT_RATIO":
+                # 从BalanceSheet表加载流动比率数据
+                data = self._load_current_ratio_data(stock_code, start_date, end_date)
+            else:
+                self.logger.warning(f"未知的基本面指标: {indicator_id}")
+                data = {}
+
+            fundamental_data[indicator_id] = data
+
+        return fundamental_data
+
+    def _load_market_cap_data(self, stock_code, start_date, end_date):
+        """从StockValuation表加载市值数据"""
+        try:
+            cursor = self.db_manager.connection.cursor(pymysql.cursors.DictCursor)
+            query = """
+            SELECT trade_date, market_cap
+            FROM StockValuation
+            WHERE stock_code = %s AND trade_date BETWEEN %s AND %s
+            ORDER BY trade_date
+            """
+            cursor.execute(query, (stock_code, start_date, end_date))
+            results = cursor.fetchall()
+
+            # 将结果转换为日期-值字典
+            data = {
+                row["trade_date"].strftime("%Y-%m-%d"): row["market_cap"]
+                for row in results
+            }
+
+            # 如果数据为空，记录警告
+            if not data:
+                self.logger.warning(
+                    f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的市值数据"
+                )
+
+            return data
+        except Exception as e:
+            self.logger.error(f"加载市值数据失败: {e}")
+            return {}
+        finally:
+            if cursor:
+                cursor.close()
+
+    def _load_pb_ratio_data(self, stock_code, start_date, end_date):
+        """从StockValuation表加载市净率数据"""
+        try:
+            cursor = self.db_manager.connection.cursor(pymysql.cursors.DictCursor)
+            query = """
+            SELECT trade_date, pb_ratio
+            FROM StockValuation
+            WHERE stock_code = %s AND trade_date BETWEEN %s AND %s
+            ORDER BY trade_date
+            """
+            cursor.execute(query, (stock_code, start_date, end_date))
+            results = cursor.fetchall()
+
+            # 将结果转换为日期-值字典
+            data = {
+                row["trade_date"].strftime("%Y-%m-%d"): row["pb_ratio"]
+                for row in results
+            }
+
+            if not data:
+                self.logger.warning(
+                    f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的市净率数据"
+                )
+
+            return data
+        except Exception as e:
+            self.logger.error(f"加载市净率数据失败: {e}")
+            return {}
+        finally:
+            if cursor:
+                cursor.close()
+
+    def _load_debt_ratio_data(self, stock_code, start_date, end_date):
+        """从BalanceSheet表加载负债率数据"""
+        try:
+            cursor = self.db_manager.connection.cursor(pymysql.cursors.DictCursor)
+            query = """
+            SELECT report_date, total_liab, total_assets
+            FROM BalanceSheet
+            WHERE stock_code = %s AND report_date BETWEEN %s AND %s
+            ORDER BY report_date
+            """
+            cursor.execute(query, (stock_code, start_date, end_date))
+            results = cursor.fetchall()
+
+            # 计算负债率并转换为日期-值字典
+            data = {}
+            for row in results:
+                if row["total_assets"] and row["total_assets"] != 0:
+                    debt_ratio = row["total_liab"] / row["total_assets"]
+                    data[row["report_date"].strftime("%Y-%m-%d")] = debt_ratio
+
+            if not data:
+                self.logger.warning(
+                    f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的负债率数据"
+                )
+
+            return data
+        except Exception as e:
+            self.logger.error(f"加载负债率数据失败: {e}")
+            return {}
+        finally:
+            if cursor:
+                cursor.close()
+
+    def _load_current_ratio_data(self, stock_code, start_date, end_date):
+        """从BalanceSheet表加载流动比率数据"""
+        try:
+            cursor = self.db_manager.connection.cursor(pymysql.cursors.DictCursor)
+            query = """
+            SELECT report_date, current_assets, current_liab
+            FROM BalanceSheet
+            WHERE stock_code = %s AND report_date BETWEEN %s AND %s
+            ORDER BY report_date
+            """
+            cursor.execute(query, (stock_code, start_date, end_date))
+            results = cursor.fetchall()
+
+            # 计算流动比率并转换为日期-值字典
+            data = {}
+            for row in results:
+                if row["current_liab"] and row["current_liab"] != 0:
+                    current_ratio = row["current_assets"] / row["current_liab"]
+                    data[row["report_date"].strftime("%Y-%m-%d")] = current_ratio
+
+            if not data:
+                self.logger.warning(
+                    f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的流动比率数据"
+                )
+
+            return data
+        except Exception as e:
+            self.logger.error(f"加载流动比率数据失败: {e}")
+            return {}
+        finally:
+            if cursor:
+                cursor.close()
 
     def prepare_data_feed(self, stock_data: pd.DataFrame) -> bt.feeds.PandasData:
         """
@@ -1057,7 +1284,9 @@ class BacktestEngine:
                 os.makedirs(output_dir)
 
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = f"{output_dir}/{strategy_name}_{stock_code}_MonteCarlo_{timestamp}.png"
+            filename = (
+                f"{output_dir}/{strategy_name}_{stock_code}_MonteCarlo_{timestamp}.png"
+            )
             plt.savefig(filename)
             self.logger.info(f"蒙特卡洛模拟结果图表已保存至: {filename}")
 
@@ -1080,7 +1309,9 @@ def main():
     parser.add_argument("--montecarlo", action="store_true", help="运行蒙特卡洛模拟")
     parser.add_argument("--simulations", type=int, default=50, help="蒙特卡洛模拟次数")
     parser.add_argument("--list", action="store_true", help="列出所有可用策略")
-    parser.add_argument("--config", type=str, default="config.json", help="配置文件路径")
+    parser.add_argument(
+        "--config", type=str, default="config.json", help="配置文件路径"
+    )
     parser.add_argument("--debug", action="store_true", help="开启调试模式")
 
     args = parser.parse_args()
@@ -1133,7 +1364,9 @@ def main():
             if not args.end:
                 args.end = datetime.now().strftime("%Y-%m-%d")
 
-            logger.info(f"回测配置: 策略ID={args.strategy}, 股票代码={args.stock}, 时间范围={args.start}至{args.end}, 初始资金={args.cash}")
+            logger.info(
+                f"回测配置: 策略ID={args.strategy}, 股票代码={args.stock}, 时间范围={args.start}至{args.end}, 初始资金={args.cash}"
+            )
 
             if args.montecarlo:
                 # 运行蒙特卡洛模拟
@@ -1173,7 +1406,7 @@ def main():
                     args.end,
                     args.cash,
                     args.user,
-                    args.debug
+                    args.debug,
                 )
 
                 # 显示回测结果

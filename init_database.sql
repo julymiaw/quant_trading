@@ -151,44 +151,6 @@ CREATE TABLE IndexComponent (
     INDEX idx_is_current (is_current)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='指数成分股表';
 
--- 6. 期货合约基本信息表
-CREATE TABLE FuturesBasic (
-    ts_code VARCHAR(20) NOT NULL,
-    symbol VARCHAR(20) NOT NULL,
-    exchange VARCHAR(20) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    multiplier INT,
-    trade_unit VARCHAR(20),
-    list_date DATE,
-    delist_date DATE,
-    data_source VARCHAR(20) NOT NULL,
-    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    PRIMARY KEY (ts_code),
-    INDEX idx_symbol (symbol),
-    INDEX idx_exchange (exchange)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='期货合约基本信息表';
-
--- 7. 期货日线行情表
-CREATE TABLE FuturesDaily (
-    ts_code VARCHAR(20) NOT NULL,
-    trade_date DATE NOT NULL,
-    open_price DECIMAL(10,2) NOT NULL,
-    high_price DECIMAL(10,2) NOT NULL,
-    low_price DECIMAL(10,2) NOT NULL,
-    close_price DECIMAL(10,2) NOT NULL,
-    settle_price DECIMAL(10,2),
-    volume INT,
-    amount DECIMAL(20,2),
-    open_interest INT,
-    data_source VARCHAR(20) NOT NULL,
-    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    PRIMARY KEY (ts_code, trade_date),
-    INDEX idx_ts_code (ts_code),
-    INDEX idx_trade_date (trade_date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='期货日线行情表';
-
 -- 8. 交易日历表
 CREATE TABLE TradingCalendar (
     exchange VARCHAR(20) NOT NULL,
@@ -210,7 +172,7 @@ CREATE TABLE TradingCalendar (
 CREATE TABLE TechnicalIndicator (
     indicator_id VARCHAR(50) NOT NULL,
     indicator_name VARCHAR(100) NOT NULL,
-    indicator_type ENUM('trend', 'momentum', 'volatility', 'volume', 'custom', 'fundamental') NOT NULL,
+    indicator_type ENUM('technical', 'fundamental') NOT NULL,
     calculation_method VARCHAR(100) NOT NULL,
     min_value DECIMAL(15,6),
     max_value DECIMAL(15,6),

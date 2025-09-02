@@ -119,26 +119,61 @@ python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ
 
 # 指定时间范围和初始资金
 python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2025-01-01 --cash 200000
+
+# 使用指数成分股进行回测（如沪深300）
+python strategy_backtest.py --strategy STRAT_001 --index 000300.SH --start 2023-01-01 --end 2025-01-01
 ```
 
 我们现在支持的策略包括：
 
-- **STRAT_004** - 小市值策略：筛选市值20-30亿的股票，选取最小的三只
-- **STRAT_005** - 双均线策略：使用5日均线和价格关系进行买卖信号生成
-- **STRAT_006** - 银行股轮动策略：持有沪深300银行指数成分股中市净率最低的股票
-- **STRAT_007** - 低估价值选股策略：基于市净率、负债比率和流动比率的综合筛选
-- **STRAT_008** - Dual Thrust策略：基于价格通道突破的策略
+- **STRAT_001** - 小市值策略：筛选市值20-30亿的股票，选取最小的三只
+- **STRAT_002** - 双均线策略：使用5日均线和价格关系进行买卖信号生成
+- **STRAT_003** - 银行股轮动策略：持有沪深300银行指数成分股中市净率最低的股票
+- **STRAT_004** - 低估价值选股策略：基于市净率、负债比率和流动比率的综合筛选
+- **STRAT_005** - Dual Thrust策略：基于价格通道突破的策略
+
+### 使用指数成分股进行回测
+
+当您使用`--index`参数获取数据后，可以直接在回测中引用该指数：
+
+```bash
+# 获取沪深300指数的所有成分股数据
+python stock_data_fetcher.py --backtest --index 000300.SH
+
+# 使用沪深300指数成分股进行回测
+python strategy_backtest.py --strategy STRAT_001 --index 000300.SH --start 2023-01-01 --end 2025-01-01 --cash 1000000
+```
+
+系统会自动：
+
+1. 从数据库中读取指数的成分股列表
+2. 对每只成分股应用选定的策略
+3. 根据策略生成买卖信号
+4. 综合计算整个投资组合的表现
+
+您还可以使用以下参数优化回测过程：
+
+```bash
+# 限制使用指数成分股中的前N只进行回测
+python strategy_backtest.py --strategy STRAT_001 --index 000300.SH --top 50 --start 2023-01-01 --end 2025-01-01
+
+# 使用指数成分股中权重最高的前20%进行回测
+python strategy_backtest.py --strategy STRAT_001 --index 000300.SH --weight-percent 20 --start 2023-01-01 --end 2025-01-01
+
+# 同时测试多个策略在指数成分股上的表现
+python strategy_backtest.py --strategy STRAT_001,STRAT_003 --index 000300.SH --start 2023-01-01 --end 2025-01-01
+```
 
 #### 小市值策略回测示例
 
-以下是使用小市值策略在沪深300成分股上进行回测的示例：
+以下是使用小市值策略在沪深300成分股上进行回测的完整示例：
 
 ```bash
 # 首先准备必要的数据
-python stock_data_fetcher.py --index 000300.SH --valuation --days 730
+python stock_data_fetcher.py --backtest --index 000300.SH
 
 # 使用小市值策略进行回测
-python strategy_backtest.py --strategy STRAT_004 --index 000300.SH --start 2023-08-25 --end 2025-08-24 --cash 1000000
+python strategy_backtest.py --strategy STRAT_001 --index 000300.SH --start 2023-08-25 --end 2025-08-24 --cash 1000000
 ```
 
 预期结果：
