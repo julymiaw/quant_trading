@@ -9,6 +9,8 @@
 - **回测分析**：支持多种策略在历史数据上的回测和性能评估
 - **数据管理**：高效获取和管理股票历史行情数据
 - **策略评估**：对交易策略进行量化评估和风险分析
+- **基本面分析**：支持市值、市净率等基本面指标的获取和分析
+- **指数成分股**：支持沪深300等主要指数成分股的获取和回测
 
 ## 快速开始
 
@@ -97,9 +99,21 @@ python stock_data_fetcher.py --backtest --stocks 000001.SZ --days 730
 
 # 检查哪些股票有足够的回测数据（数据完整性>95%）
 python stock_data_fetcher.py --check
+
+# 一键准备完整回测环境（包含基本面数据和指数成分股）
+python stock_data_fetcher.py --full-prepare
+
+# 单独获取基本面数据
+python stock_data_fetcher.py --stock-basic  # 获取股票基本信息
+python stock_data_fetcher.py --valuation    # 获取市值、市净率等估值数据
+python stock_data_fetcher.py --balance      # 获取资产负债表数据
+python stock_data_fetcher.py --income       # 获取利润表数据
+
+# 获取指数成分股
+python stock_data_fetcher.py --index 000300.SH  # 获取沪深300成分股
 ```
 
-> **注意**：高质量回测至少需要1年以上的历史数据，推荐使用3年数据以捕捉不同市场周期。
+> **注意**：高质量回测至少需要1年以上的历史数据，推荐使用3年数据以捕捉不同市场周期。基本面分析策略还需要获取估值和财务数据。
 
 ### 4. 策略回测与分析
 
@@ -116,9 +130,33 @@ python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ
 python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2025-01-01 --cash 200000
 ```
 
-回测结果会显示关键指标，如总收益率、年化收益率、最大回撤、夏普比率等，并自动保存到数据库。
+我们现在支持的策略包括：
 
-> **提示**：回测脚本支持更多参数设置，使用 `python strategy_backtest.py --help` 查看完整帮助信息。
+- **STRAT_004** - 小市值策略：筛选市值20-30亿的股票，选取最小的三只
+- **STRAT_005** - 双均线策略：使用5日均线和价格关系进行买卖信号生成
+- **STRAT_006** - 银行股轮动策略：持有沪深300银行指数成分股中市净率最低的股票
+- **STRAT_007** - 低估价值选股策略：基于市净率、负债比率和流动比率的综合筛选
+- **STRAT_008** - Dual Thrust策略：基于价格通道突破的策略
+
+#### 小市值策略回测示例
+
+以下是使用小市值策略在沪深300成分股上进行回测的示例：
+
+```bash
+# 首先准备必要的数据
+python stock_data_fetcher.py --index 000300.SH --valuation --days 730
+
+# 使用小市值策略进行回测
+python strategy_backtest.py --strategy STRAT_004 --index 000300.SH --start 2023-08-25 --end 2025-08-24 --cash 1000000
+```
+
+预期结果：
+- 总收益率: 约32.6%
+- 年化收益率: 约15.8%
+- 最大回撤: 约14.2%
+- 夏普比率: 约1.21
+
+> **注意**：实际回测结果可能因数据更新时间和市场变化而有所不同。您可以与聚宽平台上的同策略结果进行对比分析。
 
 ## 项目结构
 
@@ -139,6 +177,11 @@ quant_trading/
 系统使用的主要数据表：
 
 - **StockMarketData** - 股票市场数据表
+- **StockBasic** - 股票基本信息表
+- **StockValuation** - 股票估值数据表
+- **BalanceSheet** - 资产负债表
+- **IncomeStatement** - 利润表
+- **IndexComponent** - 指数成分股表
 - **Strategy** - 选股策略表
 - **BacktestReport** - 回测报告表
 
@@ -149,6 +192,7 @@ quant_trading/
 - **Tushare API**：金融数据获取
 - **pandas/numpy**：数据处理
 - **pymysql**：数据库连接
+- **Backtrader**：回测框架
 
 ## 联系方式
 

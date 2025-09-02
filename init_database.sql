@@ -62,13 +62,155 @@ CREATE TABLE StockMarketData (
     CONSTRAINT chk_volume_amount CHECK (volume >= 0 AND amount >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='股票市场数据表';
 
+-- 1. 股票基本信息表
+CREATE TABLE StockBasic (
+    stock_code VARCHAR(20) NOT NULL,
+    stock_name VARCHAR(100) NOT NULL,
+    area VARCHAR(50),
+    industry VARCHAR(50),
+    market VARCHAR(20),
+    list_status VARCHAR(10),
+    list_date DATE,
+    is_hs VARCHAR(10),
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (stock_code),
+    INDEX idx_industry (industry),
+    INDEX idx_list_status (list_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='股票基本信息表';
+
+-- 2. 股票估值数据表
+CREATE TABLE StockValuation (
+    stock_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    pe_ratio DECIMAL(10,4),
+    pb_ratio DECIMAL(10,4),
+    ps_ratio DECIMAL(10,4),
+    market_cap DECIMAL(20,4),
+    circulating_market_cap DECIMAL(20,4),
+    turnover_ratio DECIMAL(10,4),
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (stock_code, trade_date),
+    INDEX idx_stock_code (stock_code),
+    INDEX idx_trade_date (trade_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='股票估值数据表';
+
+-- 3. 资产负债表
+CREATE TABLE BalanceSheet (
+    stock_code VARCHAR(20) NOT NULL,
+    report_period DATE NOT NULL,
+    announcement_date DATE NOT NULL,
+    total_assets DECIMAL(20,4),
+    total_liability DECIMAL(20,4),
+    total_current_assets DECIMAL(20,4),
+    total_current_liability DECIMAL(20,4),
+    fixed_assets DECIMAL(20,4),
+    cash_equivalents DECIMAL(20,4),
+    total_equity DECIMAL(20,4),
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (stock_code, report_period),
+    INDEX idx_stock_code (stock_code),
+    INDEX idx_report_period (report_period)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资产负债表';
+
+-- 4. 利润表
+CREATE TABLE IncomeStatement (
+    stock_code VARCHAR(20) NOT NULL,
+    report_period DATE NOT NULL,
+    announcement_date DATE NOT NULL,
+    total_revenue DECIMAL(20,4),
+    operating_profit DECIMAL(20,4),
+    total_profit DECIMAL(20,4),
+    net_profit DECIMAL(20,4),
+    eps_basic DECIMAL(10,4),
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (stock_code, report_period),
+    INDEX idx_stock_code (stock_code),
+    INDEX idx_report_period (report_period)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='利润表';
+
+-- 5. 指数成分股表
+CREATE TABLE IndexComponent (
+    index_code VARCHAR(20) NOT NULL,
+    stock_code VARCHAR(20) NOT NULL,
+    weight DECIMAL(10,6),
+    is_current BOOLEAN NOT NULL DEFAULT TRUE,
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (index_code, stock_code),
+    INDEX idx_index_code (index_code),
+    INDEX idx_stock_code (stock_code),
+    INDEX idx_is_current (is_current)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='指数成分股表';
+
+-- 6. 期货合约基本信息表
+CREATE TABLE FuturesBasic (
+    ts_code VARCHAR(20) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    exchange VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    multiplier INT,
+    trade_unit VARCHAR(20),
+    list_date DATE,
+    delist_date DATE,
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (ts_code),
+    INDEX idx_symbol (symbol),
+    INDEX idx_exchange (exchange)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='期货合约基本信息表';
+
+-- 7. 期货日线行情表
+CREATE TABLE FuturesDaily (
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    open_price DECIMAL(10,2) NOT NULL,
+    high_price DECIMAL(10,2) NOT NULL,
+    low_price DECIMAL(10,2) NOT NULL,
+    close_price DECIMAL(10,2) NOT NULL,
+    settle_price DECIMAL(10,2),
+    volume INT,
+    amount DECIMAL(20,2),
+    open_interest INT,
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (ts_code, trade_date),
+    INDEX idx_ts_code (ts_code),
+    INDEX idx_trade_date (trade_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='期货日线行情表';
+
+-- 8. 交易日历表
+CREATE TABLE TradingCalendar (
+    exchange VARCHAR(20) NOT NULL,
+    cal_date DATE NOT NULL,
+    is_open TINYINT(1) NOT NULL,
+    pretrade_date DATE,
+    data_source VARCHAR(20) NOT NULL,
+    collect_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (exchange, cal_date),
+    INDEX idx_exchange (exchange),
+    INDEX idx_cal_date (cal_date),
+    INDEX idx_is_open (is_open)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='交易日历表';
+
 -- =============================================
 -- 3. 创建技术指标定义表
 -- =============================================
 CREATE TABLE TechnicalIndicator (
     indicator_id VARCHAR(50) NOT NULL,
     indicator_name VARCHAR(100) NOT NULL,
-    indicator_type ENUM('trend', 'momentum', 'volatility', 'volume', 'custom') NOT NULL,
+    indicator_type ENUM('trend', 'momentum', 'volatility', 'volume', 'custom', 'fundamental') NOT NULL,
     calculation_method VARCHAR(100) NOT NULL,
     min_value DECIMAL(15,6),
     max_value DECIMAL(15,6),
@@ -111,8 +253,8 @@ CREATE TABLE StrategyCondition (
     strategy_id VARCHAR(50) NOT NULL,
     indicator_id VARCHAR(50) NOT NULL,
     condition_type ENUM('greater', 'less', 'between', 'cross_up', 'cross_down') NOT NULL,
-    threshold_min DECIMAL(15,6),
-    threshold_max DECIMAL(15,6),
+    threshold_min DECIMAL(20,6),
+    threshold_max DECIMAL(20,6),
     signal_action ENUM('buy', 'sell', 'hold') NOT NULL,
     condition_order INT NOT NULL,
     
@@ -233,21 +375,58 @@ INSERT INTO TechnicalIndicator (indicator_id, indicator_name, indicator_type, ca
 ('VOLUME_MA', '成交量移动平均', 'volume', 'talib.SMA', NULL, NULL, 10, '成交量趋势指标'),
 ('VOLATILITY_PREDICT', '预测波动率', 'custom', 'custom_model', 0, 1, NULL, 'AI模型预测的未来波动率');
 
--- 插入示例策略
+-- 添加新的技术指标
+INSERT INTO TechnicalIndicator (indicator_id, indicator_name, indicator_type, calculation_method, min_value, max_value, default_period, description) VALUES
+('MARKET_CAP', '市值', 'fundamental', 'valuation.market_cap', NULL, NULL, NULL, '公司总市值'),
+('PB_RATIO', '市净率', 'fundamental', 'valuation.pb_ratio', NULL, NULL, NULL, '市净率指标'),
+('DEBT_RATIO', '资产负债率', 'fundamental', 'custom', 0, 1, NULL, '总负债/总资产'),
+('CURRENT_RATIO', '流动比率', 'fundamental', 'custom', 0, NULL, NULL, '流动资产/流动负债'),
+('DUAL_THRUST', '通道突破', 'custom', 'custom', NULL, NULL, 10, 'Dual Thrust策略指标');
+
+-- 插入小市值策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_001', 'RSI超卖买入策略', 'builtin', 'admin_001', '当RSI指标低于30时买入，高于70时卖出'),
-('STRAT_002', '均线金叉策略', 'builtin', 'admin_001', '5日均线上穿20日均线时买入'),
-('STRAT_003', '波动率预测策略', 'builtin', 'admin_001', '基于AI预测波动率的交易策略');
+('STRAT_004', '小市值策略', 'builtin', 'admin_001', '筛选出市值介于20-30亿的股票，选取其中市值最小的三只股票，每天开盘买入，持有五个交易日，然后调仓。');
 
--- 为示例策略插入条件
+-- 插入双均线策略
+INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
+('STRAT_005', '双均线策略', 'builtin', 'admin_001', '通过5日均线和价格的关系进行买卖。当价格上穿5日均线1%时买入，当价格下穿5日均线时卖出。');
+
+-- 插入银行股轮动策略
+INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
+('STRAT_006', '银行股轮动策略', 'builtin', 'admin_001', '始终持有沪深300银行指数成分股中市净率最低的股份制银行，每周检查一次，如果发现有新的股份制银行市净率低于原有的股票，则予以换仓。');
+
+-- 插入低估价值选股策略
+INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
+('STRAT_007', '低估价值选股策略', 'builtin', 'admin_001', '1.市净率小于2；2.负债比例高于市场平均值；3.企业的流动资产至少是流动负债的1.2倍；4.每年四次调仓，即在1/4/7/10月调仓；5.可加入止损(十天HS300跌幅达10%清仓)。');
+
+-- 插入Dual Thrust策略
+INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
+('STRAT_008', 'Dual Thrust策略', 'builtin', 'admin_001', '1.首先计算Range=Max(HH-LC,HC-LL)；2.设定上轨=Open+K1*Range，下轨=Open-K2*Range；3.当价格向上突破上轨时买入，当价格向下突破下轨时卖出。');
+
+-- 为策略添加条件
+-- 小市值策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
--- RSI超卖买入策略
-('COND_001', 'STRAT_001', 'RSI', 'less', NULL, 30, 'buy', 1),
-('COND_002', 'STRAT_001', 'RSI', 'greater', 70, NULL, 'sell', 2),
+('COND_005', 'STRAT_004', 'MARKET_CAP', 'between', 2000000000, 3000000000, 'buy', 1);
 
-('COND_003', 'STRAT_002', 'MA5', 'cross_up', NULL, NULL, 'buy', 1),
+-- 双均线策略条件
+INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
+('COND_006', 'STRAT_005', 'MA5', 'greater', 1.01, NULL, 'buy', 1),
+('COND_007', 'STRAT_005', 'MA5', 'less', NULL, 1.0, 'sell', 2);
 
-('COND_004', 'STRAT_003', 'VOLATILITY_PREDICT', 'greater', 0.05, NULL, 'sell', 1);
+-- 银行股轮动策略条件
+INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
+('COND_008', 'STRAT_006', 'PB_RATIO', 'less', NULL, NULL, 'buy', 1);
+
+-- 低估价值选股策略条件
+INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
+('COND_009', 'STRAT_007', 'PB_RATIO', 'less', NULL, 2.0, 'buy', 1),
+('COND_010', 'STRAT_007', 'DEBT_RATIO', 'greater', NULL, NULL, 'buy', 2),
+('COND_011', 'STRAT_007', 'CURRENT_RATIO', 'greater', 1.2, NULL, 'buy', 3);
+
+-- Dual Thrust策略条件
+INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
+('COND_012', 'STRAT_008', 'DUAL_THRUST', 'greater', NULL, NULL, 'buy', 1),
+('COND_013', 'STRAT_008', 'DUAL_THRUST', 'less', NULL, NULL, 'sell', 2);
 
 -- =============================================
 -- 10. 创建视图（便于查询）
