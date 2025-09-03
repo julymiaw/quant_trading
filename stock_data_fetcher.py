@@ -42,16 +42,32 @@ DB_DEFAULTS = {
 class StockDataManager:
     """股票数据管理类"""
 
-    def __init__(self, db_password: str, tushare_token: str):
+    def __init__(
+        self,
+        db_password: str,
+        tushare_token: str,
+        start_date: str,
+        end_date: str,
+    ):
         """
         初始化股票数据管理器
 
         Args:
             db_password: 数据库密码
             tushare_token: Tushare API令牌
+            start_date: 回测开始日期 (YYYY-MM-DD)
+            end_date: 回测结束日期 (YYYY-MM-DD)
         """
         self.db_password = db_password
         self.connection = None
+        self.start_date = start_date
+        self.end_date = end_date
+
+        # 转换为tushare格式的日期 (YYYYMMDD)
+        self.start_date_ts = (
+            self.start_date.replace("-", "") if self.start_date else None
+        )
+        self.end_date_ts = self.end_date.replace("-", "") if self.end_date else None
 
         # 初始化Tushare
         ts.set_token(tushare_token)
@@ -95,15 +111,17 @@ class StockDataManager:
     def get_stock_data(
         self,
         ts_codes: List[str],
-        start_date: str,
-        end_date: str,
     ) -> pd.DataFrame:
         """获取股票行情数据"""
         try:
             ts_code_str = ",".join(ts_codes)
-            self.logger.info(f"获取股票{ts_code_str}从{start_date}到{end_date}的数据")
+            self.logger.info(
+                f"获取股票{ts_code_str}从{self.start_date}到{self.end_date}的数据"
+            )
             df = self.pro.daily(
-                ts_code=ts_code_str, start_date=start_date, end_date=end_date
+                ts_code=ts_code_str,
+                start_date=self.start_date_ts,
+                end_date=self.end_date_ts,
             )
 
             if df.empty:
@@ -245,11 +263,14 @@ class StockDataManager:
             self.logger.error(f"获取股票列表失败: {e}")
             return []
 
-    def get_available_trade_dates(self, start_date: str, end_date: str) -> List[str]:
-        """获取指定日期范围内的交易日"""
+    def get_available_trade_dates(self) -> List[str]:
+        """获取回测期间的交易日列表"""
         try:
             df = self.pro.trade_cal(
-                exchange="SSE", start_date=start_date, end_date=end_date, is_open=1
+                exchange="SSE",
+                start_date=self.start_date_ts,
+                end_date=self.end_date_ts,
+                is_open=1,
             )
             if df.empty:
                 self.logger.warning(f"未获取到交易日信息")
@@ -262,19 +283,13 @@ class StockDataManager:
             self.logger.error(f"获取交易日失败: {e}")
             return []
 
-    def check_stock_data_completeness(
-        self, stock_code: str, start_date: str, end_date: str
-    ) -> Tuple[float, int, int]:
-        """检查指定股票在指定日期范围内的数据完整性"""
+    def check_stock_data_completeness(self, stock_code: str) -> Tuple[float, int, int]:
+        """检查指定股票在回测期间的数据完整性"""
         try:
             cursor = self.connection.cursor()
 
-            # 将日期转换为tushare格式
-            start_date_ts = start_date.replace("-", "")
-            end_date_ts = end_date.replace("-", "")
-
             # 获取该时间段内应有的交易日
-            trade_dates = self.get_available_trade_dates(start_date_ts, end_date_ts)
+            trade_dates = self.get_available_trade_dates()
             expected_days = len(trade_dates)
 
             if expected_days == 0:
@@ -287,7 +302,7 @@ class StockDataManager:
             WHERE stock_code = %s 
             AND trade_date BETWEEN %s AND %s
             """
-            cursor.execute(query, (stock_code, start_date, end_date))
+            cursor.execute(query, (stock_code, self.start_date, self.end_date))
             actual_days = cursor.fetchone()[0]
 
             # 计算完整性比率
@@ -307,24 +322,12 @@ class StockDataManager:
     def prepare_backtest_data(
         self,
         stock_codes: List[str],
-        end_date: str = None,
-        history_days: int = 1095,  # 默认3年数据
-        batch_query_interval: int = 1,  # API调用间隔
         data_check_threshold: float = 0.9,  # 数据完整性阈值
+        batch_query_interval: int = 1,  # API调用间隔
     ) -> Dict[str, Any]:
         """准备回测所需的历史数据"""
-        if not end_date:
-            end_date = datetime.now().strftime("%Y-%m-%d")
 
-        start_date = (
-            datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=history_days)
-        ).strftime("%Y-%m-%d")
-
-        # 转换为tushare格式
-        start_date_ts = start_date.replace("-", "")
-        end_date_ts = end_date.replace("-", "")
-
-        self.logger.info(f"准备从{start_date}到{end_date}的回测数据")
+        self.logger.info(f"准备从{self.start_date}到{self.end_date}的回测数据")
 
         # 批处理股票数据获取
         batch_size = 5  # Tushare API有频率限制，每次获取少量股票
@@ -335,13 +338,12 @@ class StockDataManager:
             "added_data_points": 0,
             "failed_stocks": [],
             "success_stocks": [],
-            "start_date": start_date,
-            "end_date": end_date,
-            "history_days": history_days,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
         }
 
         # 获取交易日历
-        trade_dates = self.get_available_trade_dates(start_date_ts, end_date_ts)
+        trade_dates = self.get_available_trade_dates()
         expected_days = len(trade_dates)
         result_stats["expected_trading_days"] = expected_days
 
@@ -357,7 +359,7 @@ class StockDataManager:
                 try:
                     # 检查现有数据完整性
                     completeness, actual_days, _ = self.check_stock_data_completeness(
-                        stock, start_date, end_date
+                        stock
                     )
 
                     if completeness >= data_check_threshold:
@@ -372,9 +374,7 @@ class StockDataManager:
                     self.logger.info(
                         f"获取股票{stock}的历史数据，完整性: {completeness:.2%}"
                     )
-                    raw_data = self.get_stock_data(
-                        ts_codes=[stock], start_date=start_date_ts, end_date=end_date_ts
-                    )
+                    raw_data = self.get_stock_data(ts_codes=[stock])
 
                     if raw_data.empty:
                         self.logger.warning(
@@ -438,21 +438,49 @@ class StockDataManager:
             self.logger.error(f"获取股票基本信息失败: {e}")
             return 0
 
-    def get_stock_valuation(self, trade_date=None) -> int:
-        """获取股票估值数据"""
-        if not trade_date:
-            trade_date = datetime.now().strftime("%Y%m%d")
-            # 如果是周末或节假日，获取最近的交易日
-            try:
-                recent_trade_dates = self.get_available_trade_dates(
-                    (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
-                    datetime.now().strftime("%Y%m%d"),
-                )
-                if recent_trade_dates:
-                    trade_date = recent_trade_dates[-1]
-            except:
-                pass
+    def get_historical_stock_valuation(self) -> int:
+        """
+        获取回测期间每个交易日的股票估值数据
 
+        Returns:
+            插入/更新的记录数
+        """
+
+        # 获取回测期间的所有交易日
+        self.logger.info(
+            f"获取从 {self.start_date} 到 {self.end_date} 的历史股票估值数据..."
+        )
+        trade_dates = self.get_available_trade_dates()
+
+        if not trade_dates:
+            self.logger.warning(
+                f"在 {self.start_date} 至 {self.end_date} 期间未找到交易日"
+            )
+            return 0
+
+        total_records = 0
+        # 为每个交易日获取估值数据
+        for trade_date in trade_dates:
+            self.logger.info(f"获取 {trade_date} 的估值数据...")
+            records = self.get_stock_valuation(trade_date)
+            total_records += records
+
+            # 添加API调用延迟，避免超过频率限制
+            time.sleep(1)
+
+        self.logger.info(f"成功获取并存储了 {total_records} 条历史估值数据")
+        return total_records
+
+    def get_stock_valuation(self, trade_date) -> int:
+        """
+        获取特定日期的股票估值数据
+
+        Args:
+            trade_date: 交易日期，格式YYYYMMDD
+
+        Returns:
+            插入/更新的记录数
+        """
         try:
             self.logger.info(f"获取{trade_date}的股票估值数据...")
             df = self.pro.daily_basic(
@@ -876,15 +904,13 @@ def main():
     """主函数"""
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="量化交易系统回测数据准备工具")
-    parser.add_argument("--backtest", action="store_true", help="准备回测数据")
+    parser.add_argument(
+        "--start", type=str, required=True, help="开始日期 (YYYY-MM-DD)"
+    )
+    parser.add_argument("--end", type=str, required=True, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument("--stock", type=str, help="准备单只股票的回测数据")
-    parser.add_argument("--days", type=int, default=1095, help="历史数据天数")
-    parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument(
         "--index", type=str, help="使用指定指数的成分股，例如：000300.SH (沪深300)"
-    )
-    parser.add_argument(
-        "--completeness", type=float, default=0.95, help="数据完整性阈值"
     )
     parser.add_argument(
         "--config", type=str, default="config.json", help="配置文件路径"
@@ -892,18 +918,16 @@ def main():
 
     args = parser.parse_args()
 
-    # 如果没有提供任何参数，显示使用说明
-    if len(sys.argv) == 1:
-        show_usage()
-        return
-
     try:
         # 加载配置
         config = load_config(args.config)
 
-        # 创建数据管理器
+        # 创建数据管理器，传入日期范围
         stock_manager = StockDataManager(
-            db_password=config["db_password"], tushare_token=config["tushare_token"]
+            db_password=config["db_password"],
+            tushare_token=config["tushare_token"],
+            start_date=args.start,
+            end_date=args.end,
         )
 
         # 连接数据库
@@ -918,6 +942,7 @@ def main():
 
         # 准备回测数据
         stock_codes = []
+
         if args.index:
             # 使用指定指数成分股
             logger.info(f"准备指数 {args.index} 成分股的数据...")
@@ -938,28 +963,26 @@ def main():
             stock_codes = [args.stock]
             logger.info(f"将为单只股票 {args.stock} 准备数据")
         else:
-            # 使用默认股票（简化后的默认列表）
+            # 使用默认股票
             stock_codes = default_stocks
             logger.info(f"未指定股票或指数，将使用默认的 {len(default_stocks)} 只股票")
 
-            # 准备所有必要的数据
-            logger.info("准备回测所需的完整数据...")
+        # 准备所有必要的数据
+        logger.info("准备回测所需的完整数据...")
 
         # 1. 获取基础数据表
         stock_manager.get_stock_basic()
         stock_manager.get_trading_calendar()
 
-        # 2. 获取最近交易日的估值数据
-        stock_manager.get_stock_valuation()
+        # 2. 获取回测期间的估值数据（为每个交易日获取）
+        stock_manager.get_historical_stock_valuation()
 
         # 3. 获取最近季度的财务数据
         stock_manager.get_balance_sheet()
         stock_manager.get_income_statement()
 
         # 4. 准备股票市场数据
-        results = stock_manager.prepare_backtest_data(
-            stock_codes=stock_codes, end_date=args.end, history_days=args.days
-        )
+        results = stock_manager.prepare_backtest_data(stock_codes=stock_codes)
 
         logger.info(
             f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票"
@@ -988,20 +1011,21 @@ def show_usage():
 📖 回测数据准备工具使用说明:
 
 1️⃣ 准备单只股票数据:
-   python stock_data_fetcher.py --stock 600519.SH --days 365
+   python stock_data_fetcher.py --start 2024-01-01 --end 2024-08-31 --stock 600519.SH
 
 2️⃣ 准备指数成分股数据:
-   python stock_data_fetcher.py --index 000300.SH
+   python stock_data_fetcher.py --start 2024-01-01 --end 2024-08-31 --index 000300.SH
 
 📋 参数说明:
+   --start        : 开始日期 (YYYY-MM-DD)，必须提供
+   --end          : 结束日期 (YYYY-MM-DD)，必须提供
    --stock        : 准备单只股票的回测数据
    --index        : 使用指定指数的成分股，例如：000300.SH (沪深300)
-   --days         : 历史数据天数，默认为1095天(约3年)
-   --end          : 结束日期 (YYYY-MM-DD)，默认为今天
    --config       : 配置文件路径，默认为config.json
    --help         : 显示帮助信息
 
 ⚠️ 注意事项:
+   - 开始日期和结束日期为必填参数
    - 数据将保存到数据库相应的表中
    - 确保config.json中包含正确的数据库密码和Tushare令牌
    - 准备大量股票数据可能需要较长时间
