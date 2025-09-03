@@ -96,9 +96,6 @@ python stock_data_fetcher.py --stock 000001.SZ --days 1095
 
 # 准备指数成分股数据（如沪深300）
 python stock_data_fetcher.py --index 000300.SH
-
-# 检查哪些股票有足够的回测数据（数据完整性>95%）
-python stock_data_fetcher.py --check
 ```
 
 ### 4. 策略回测与分析

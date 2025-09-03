@@ -1,5 +1,4 @@
 config.json
 api_reports
-backtest_ready_stocks_*
 backtest_results
 joinquant*

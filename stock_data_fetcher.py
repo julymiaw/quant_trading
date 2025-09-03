@@ -407,67 +407,6 @@ class StockDataManager:
 
         return result_stats
 
-    def get_backtest_ready_stocks(
-        self,
-        min_completeness: float = 0.95,
-        start_date: str = None,
-        end_date: str = None,
-        min_days: int = 365,
-    ) -> List[str]:
-        """获取可用于回测的股票列表(数据完整性达标)"""
-        if not end_date:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-
-        if not start_date:
-            start_date = (
-                datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=min_days)
-            ).strftime("%Y-%m-%d")
-
-        try:
-            cursor = self.connection.cursor()
-
-            # 获取有数据的所有股票
-            query = """
-            SELECT DISTINCT stock_code
-            FROM StockMarketData
-            """
-            cursor.execute(query)
-            all_stocks = [row[0] for row in cursor.fetchall()]
-
-            if not all_stocks:
-                self.logger.warning("数据库中没有股票数据")
-                return []
-
-            ready_stocks = []
-            total = len(all_stocks)
-
-            self.logger.info(
-                f"检查{total}只股票在{start_date}至{end_date}期间的数据完整性"
-            )
-
-            # 检查每只股票的数据完整性
-            for i, stock in enumerate(all_stocks):
-                completeness, actual, expected = self.check_stock_data_completeness(
-                    stock, start_date, end_date
-                )
-
-                if completeness >= min_completeness:
-                    ready_stocks.append(stock)
-
-                # 每100只股票显示一次进度
-                if (i + 1) % 100 == 0 or i + 1 == total:
-                    self.logger.info(f"进度: {i+1}/{total}, 可用: {len(ready_stocks)}")
-
-            self.logger.info(f"检查完成，有{len(ready_stocks)}/{total}只股票可用于回测")
-            return ready_stocks
-
-        except Exception as e:
-            self.logger.error(f"获取可回测股票列表失败: {e}")
-            return []
-        finally:
-            if cursor:
-                cursor.close()
-
     def get_stock_basic(self) -> int:
         """获取股票基本信息"""
         try:
@@ -941,7 +880,6 @@ def main():
     parser.add_argument("--stock", type=str, help="准备单只股票的回测数据")
     parser.add_argument("--days", type=int, default=1095, help="历史数据天数")
     parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
-    parser.add_argument("--check", action="store_true", help="检查哪些股票可用于回测")
     parser.add_argument(
         "--index", type=str, help="使用指定指数的成分股，例如：000300.SH (沪深300)"
     )
@@ -978,87 +916,62 @@ def main():
             "000858.SZ",  # 五粮液
         ]
 
-        if args.check:
-            # 检查可用于回测的股票
-            end_date = args.end or datetime.now().strftime("%Y-%m-%d")
+        # 准备回测数据
+        stock_codes = []
+        if args.index:
+            # 使用指定指数成分股
+            logger.info(f"准备指数 {args.index} 成分股的数据...")
+            stock_manager.get_index_component(args.index)  # 确保指数成分股数据最新
+            stock_codes = stock_manager.get_index_stocks(args.index)
 
-            ready_stocks = stock_manager.get_backtest_ready_stocks(
-                min_completeness=args.completeness,
-                end_date=end_date,
-                min_days=args.days,
-            )
-
-            if ready_stocks:
-                # 保存结果到文件
-                result_file = (
-                    f"backtest_ready_stocks_{datetime.now().strftime('%Y%m%d')}.txt"
-                )
-                with open(result_file, "w") as f:
-                    f.write("\n".join(ready_stocks))
+            if stock_codes:
                 logger.info(
-                    f"找到{len(ready_stocks)}只可用于回测的股票，已保存至{result_file}"
+                    f"将为指数 {args.index} 的 {len(stock_codes)} 只成分股准备数据"
                 )
             else:
-                logger.warning("未找到符合条件的股票")
+                logger.warning(
+                    f"未找到指数 {args.index} 的成分股，请检查指数代码是否正确"
+                )
+                return
+        elif args.stock:
+            # 单只股票模式
+            stock_codes = [args.stock]
+            logger.info(f"将为单只股票 {args.stock} 准备数据")
         else:
-            # 准备回测数据
-            stock_codes = []
-            if args.index:
-                # 使用指定指数成分股
-                logger.info(f"准备指数 {args.index} 成分股的数据...")
-                stock_manager.get_index_component(args.index)  # 确保指数成分股数据最新
-                stock_codes = stock_manager.get_index_stocks(args.index)
-
-                if stock_codes:
-                    logger.info(
-                        f"将为指数 {args.index} 的 {len(stock_codes)} 只成分股准备数据"
-                    )
-                else:
-                    logger.warning(
-                        f"未找到指数 {args.index} 的成分股，请检查指数代码是否正确"
-                    )
-                    return
-            elif args.stock:
-                # 单只股票模式
-                stock_codes = [args.stock]
-                logger.info(f"将为单只股票 {args.stock} 准备数据")
-            else:
-                # 使用默认股票（简化后的默认列表）
-                stock_codes = default_stocks
-                logger.info(
-                    f"未指定股票或指数，将使用默认的 {len(default_stocks)} 只股票"
-                )
+            # 使用默认股票（简化后的默认列表）
+            stock_codes = default_stocks
+            logger.info(f"未指定股票或指数，将使用默认的 {len(default_stocks)} 只股票")
 
             # 准备所有必要的数据
             logger.info("准备回测所需的完整数据...")
 
-            # 1. 获取基础数据表
-            stock_manager.get_stock_basic()
-            stock_manager.get_trading_calendar()
+        # 1. 获取基础数据表
+        stock_manager.get_stock_basic()
+        stock_manager.get_trading_calendar()
 
-            # 2. 获取最近交易日的估值数据
-            stock_manager.get_stock_valuation()
+        # 2. 获取最近交易日的估值数据
+        stock_manager.get_stock_valuation()
 
-            # 3. 获取最近季度的财务数据
-            stock_manager.get_balance_sheet()
-            stock_manager.get_income_statement()
+        # 3. 获取最近季度的财务数据
+        stock_manager.get_balance_sheet()
+        stock_manager.get_income_statement()
 
-            # 4. 准备股票市场数据
-            results = stock_manager.prepare_backtest_data(
-                stock_codes=stock_codes, end_date=args.end, history_days=args.days
-            )
+        # 4. 准备股票市场数据
+        results = stock_manager.prepare_backtest_data(
+            stock_codes=stock_codes, end_date=args.end, history_days=args.days
+        )
 
-            logger.info(
-                f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票"
-            )
+        logger.info(
+            f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票"
+        )
 
-            # 根据模式显示不同的完成信息
-            if args.index:
-                logger.info(f"指数 {args.index} 的成分股数据准备完成，可以进行回测了")
-            elif args.stock:
-                logger.info(f"股票 {args.stock} 的数据准备完成，可以进行回测了")
-            else:
-                logger.info("默认股票数据准备完成，可以进行回测了")
+        # 根据模式显示不同的完成信息
+        if args.index:
+            logger.info(f"指数 {args.index} 的成分股数据准备完成，可以进行回测了")
+        elif args.stock:
+            logger.info(f"股票 {args.stock} 的数据准备完成，可以进行回测了")
+        else:
+            logger.info("默认股票数据准备完成，可以进行回测了")
 
     except Exception as e:
         logger.error(f"处理过程中发生错误: {e}")
@@ -1080,16 +993,11 @@ def show_usage():
 2️⃣ 准备指数成分股数据:
    python stock_data_fetcher.py --index 000300.SH
 
-3️⃣ 检查可用于回测的股票:
-   python stock_data_fetcher.py --check --completeness 0.95
-
 📋 参数说明:
    --stock        : 准备单只股票的回测数据
    --index        : 使用指定指数的成分股，例如：000300.SH (沪深300)
    --days         : 历史数据天数，默认为1095天(约3年)
    --end          : 结束日期 (YYYY-MM-DD)，默认为今天
-   --check        : 检查哪些股票可用于回测
-   --completeness : 数据完整性阈值，默认为0.95(95%)
    --config       : 配置文件路径，默认为config.json
    --help         : 显示帮助信息
 
