@@ -9,6 +9,7 @@ Python版本: 3.10.x
 专注于为回测准备必要的历史股票数据，支持基本面分析和策略回测
 """
 
+import sys
 import tushare as ts
 import pymysql
 import pandas as pd
@@ -937,7 +938,7 @@ def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="量化交易系统回测数据准备工具")
     parser.add_argument("--backtest", action="store_true", help="准备回测数据")
-    parser.add_argument("--stocks", type=str, help="指定股票代码，多个用逗号分隔")
+    parser.add_argument("--stock", type=str, help="准备单只股票的回测数据")
     parser.add_argument("--days", type=int, default=1095, help="历史数据天数")
     parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument("--check", action="store_true", help="检查哪些股票可用于回测")
@@ -953,6 +954,11 @@ def main():
 
     args = parser.parse_args()
 
+    # 如果没有提供任何参数，显示使用说明
+    if len(sys.argv) == 1:
+        show_usage()
+        return
+
     try:
         # 加载配置
         config = load_config(args.config)
@@ -967,12 +973,9 @@ def main():
 
         # 默认股票列表
         default_stocks = [
-            "000001.SZ",
-            "000002.SZ",
-            "600000.SH",
-            "600036.SH",
-            "600519.SH",
-            "000858.SZ",
+            "000001.SZ",  # 平安银行
+            "600519.SH",  # 贵州茅台
+            "000858.SZ",  # 五粮液
         ]
 
         if args.check:
@@ -1000,14 +1003,31 @@ def main():
         else:
             # 准备回测数据
             stock_codes = []
-            if args.stocks:
-                stock_codes = args.stocks.split(",")
-            elif args.index:
+            if args.index:
                 # 使用指定指数成分股
+                logger.info(f"准备指数 {args.index} 成分股的数据...")
                 stock_manager.get_index_component(args.index)  # 确保指数成分股数据最新
                 stock_codes = stock_manager.get_index_stocks(args.index)
+
+                if stock_codes:
+                    logger.info(
+                        f"将为指数 {args.index} 的 {len(stock_codes)} 只成分股准备数据"
+                    )
+                else:
+                    logger.warning(
+                        f"未找到指数 {args.index} 的成分股，请检查指数代码是否正确"
+                    )
+                    return
+            elif args.stock:
+                # 单只股票模式
+                stock_codes = [args.stock]
+                logger.info(f"将为单只股票 {args.stock} 准备数据")
             else:
+                # 使用默认股票（简化后的默认列表）
                 stock_codes = default_stocks
+                logger.info(
+                    f"未指定股票或指数，将使用默认的 {len(default_stocks)} 只股票"
+                )
 
             # 准备所有必要的数据
             logger.info("准备回测所需的完整数据...")
@@ -1032,12 +1052,53 @@ def main():
                 f"回测数据准备完成 - 成功处理{results['processed_stocks']}/{results['total_stocks']}只股票"
             )
 
+            # 根据模式显示不同的完成信息
+            if args.index:
+                logger.info(f"指数 {args.index} 的成分股数据准备完成，可以进行回测了")
+            elif args.stock:
+                logger.info(f"股票 {args.stock} 的数据准备完成，可以进行回测了")
+            else:
+                logger.info("默认股票数据准备完成，可以进行回测了")
+
     except Exception as e:
         logger.error(f"处理过程中发生错误: {e}")
         logger.error(traceback.format_exc())
     finally:
         if "stock_manager" in locals():
             stock_manager.close_database()
+
+
+def show_usage():
+    """显示使用说明"""
+    print(
+        """
+📖 回测数据准备工具使用说明:
+
+1️⃣ 准备单只股票数据:
+   python stock_data_fetcher.py --stock 600519.SH --days 365
+
+2️⃣ 准备指数成分股数据:
+   python stock_data_fetcher.py --index 000300.SH
+
+3️⃣ 检查可用于回测的股票:
+   python stock_data_fetcher.py --check --completeness 0.95
+
+📋 参数说明:
+   --stock        : 准备单只股票的回测数据
+   --index        : 使用指定指数的成分股，例如：000300.SH (沪深300)
+   --days         : 历史数据天数，默认为1095天(约3年)
+   --end          : 结束日期 (YYYY-MM-DD)，默认为今天
+   --check        : 检查哪些股票可用于回测
+   --completeness : 数据完整性阈值，默认为0.95(95%)
+   --config       : 配置文件路径，默认为config.json
+   --help         : 显示帮助信息
+
+⚠️ 注意事项:
+   - 数据将保存到数据库相应的表中
+   - 确保config.json中包含正确的数据库密码和Tushare令牌
+   - 准备大量股票数据可能需要较长时间
+    """
+    )
 
 
 if __name__ == "__main__":

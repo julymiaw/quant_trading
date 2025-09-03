@@ -378,47 +378,55 @@ class DatabaseManager:
                 cursor.close()
 
 
-class DynamicBacktestStrategy(bt.Strategy):
-    """动态回测策略类，可根据数据库中的策略条件动态配置"""
+class PortfolioStrategy(bt.Strategy):
+    """组合回测策略类，可同时处理多只股票并根据策略条件动态配置"""
 
     params = (
         ("strategy_conditions", []),  # 策略条件列表
         ("fundamental_data", {}),  # 基本面数据
+        ("rebalance_period", 5),  # 调仓周期，默认5天
         ("debug_mode", False),  # 调试模式
     )
 
     def __init__(self):
         """初始化策略"""
-        self.order = None  # 当前订单
-        self.buyprice = None  # 买入价格
-        self.buycomm = None  # 买入手续费
-
         # 日志
         self.logger = logger
 
-        # 计算所需的技术指标
-        self.indicators = {}
-        # 初始化基本面数据
+        # 计数器，用于定期调仓
+        self.day_count = 0
+
+        # 每只股票的订单
+        self.orders = {}
+
+        # 每只股票的技术指标
+        self.stock_indicators = {}
+
+        # 基本面数据
         self.fundamental_data = self.params.fundamental_data
 
-        self.setup_indicators()
+        # 初始化每只股票的技术指标
+        for i, data in enumerate(self.datas):
+            stock_code = data._name  # 获取股票代码
+            self.stock_indicators[stock_code] = {}
+
+            # 为每只股票创建空的订单字典
+            self.orders[stock_code] = None
+
+            # 设置该股票的技术指标
+            self._setup_indicators_for_stock(data, stock_code)
 
         # 初始化交易记录
         self.trades = []
 
-    def setup_indicators(self):
-        """根据策略条件设置技术指标"""
-        # 用于记录已添加的指标，避免重复添加
+    def _setup_indicators_for_stock(self, data, stock_code):
+        """为单只股票设置技术指标"""
+        # 记录已添加的指标，避免重复
         added_indicators = set()
-        # 分别存储技术指标和基本面指标
-        self.indicators = {}  # 技术指标
-        self.fundamental_data = {}  # 基本面指标
 
         for condition in self.params.strategy_conditions:
             indicator_id = condition["indicator_id"]
-            indicator_type = condition.get(
-                "indicator_type", "technical"
-            )  # 获取指标类型
+            indicator_type = condition.get("indicator_type", "technical")
 
             # 如果指标已添加，则跳过
             if indicator_id in added_indicators:
@@ -426,52 +434,56 @@ class DynamicBacktestStrategy(bt.Strategy):
 
             # 根据指标类型分别处理
             if indicator_type == "technical":
-                self._setup_technical_indicator(indicator_id, condition)
-            elif indicator_type == "fundamental":
-                # 对于基本面指标，只记录需要加载，稍后在run_backtest中处理
-                self.fundamental_data[indicator_id] = None
-                self.logger.info(
-                    f"基本面指标 {indicator_id} 将在策略初始化后从数据库加载"
+                self._setup_technical_indicator(
+                    data, stock_code, indicator_id, condition
                 )
 
-            # 将指标添加到已添加集合中
+            # 将指标添加到已处理集合
             added_indicators.add(indicator_id)
 
-    def _setup_technical_indicator(self, indicator_id, condition):
-        """设置技术指标"""
+    def _setup_technical_indicator(self, data, stock_code, indicator_id, condition):
+        """为单只股票设置技术指标"""
         # 根据指标ID设置相应的技术指标
         if indicator_id == "RSI":
             period = condition.get("default_period", 14)
-            self.indicators[indicator_id] = bt.indicators.RSI(
-                self.data.close, period=period
+            self.stock_indicators[stock_code][indicator_id] = bt.indicators.RSI(
+                data.close, period=period
             )
         elif indicator_id == "MACD":
-            self.indicators[indicator_id] = bt.indicators.MACD(
-                self.data.close, period_me1=12, period_me2=26, period_signal=9
+            self.stock_indicators[stock_code][indicator_id] = bt.indicators.MACD(
+                data.close, period_me1=12, period_me2=26, period_signal=9
             )
-            self.indicators["MACD_signal"] = self.indicators[indicator_id].signal
+            self.stock_indicators[stock_code]["MACD_signal"] = self.stock_indicators[
+                stock_code
+            ][indicator_id].signal
         elif indicator_id == "BOLL":
             period = condition.get("default_period", 20)
-            self.indicators[indicator_id] = bt.indicators.BollingerBands(
-                self.data.close, period=period
+            self.stock_indicators[stock_code][indicator_id] = (
+                bt.indicators.BollingerBands(data.close, period=period)
             )
-            self.indicators["BOLL_top"] = self.indicators[indicator_id].top
-            self.indicators["BOLL_mid"] = self.indicators[indicator_id].mid
-            self.indicators["BOLL_bot"] = self.indicators[indicator_id].bot
+            self.stock_indicators[stock_code]["BOLL_top"] = self.stock_indicators[
+                stock_code
+            ][indicator_id].top
+            self.stock_indicators[stock_code]["BOLL_mid"] = self.stock_indicators[
+                stock_code
+            ][indicator_id].mid
+            self.stock_indicators[stock_code]["BOLL_bot"] = self.stock_indicators[
+                stock_code
+            ][indicator_id].bot
         elif indicator_id.startswith("MA") and indicator_id[2:].isdigit():
             # 确保是真正的移动平均线指标，而不是MARKET_CAP等
             period = int(indicator_id[2:])
-            self.indicators[indicator_id] = bt.indicators.SMA(
-                self.data.close, period=period
+            self.stock_indicators[stock_code][indicator_id] = bt.indicators.SMA(
+                data.close, period=period
             )
         elif indicator_id == "VOLUME_MA":
             period = condition.get("default_period", 10)
-            self.indicators[indicator_id] = bt.indicators.SMA(
-                self.data.volume, period=period
+            self.stock_indicators[stock_code][indicator_id] = bt.indicators.SMA(
+                data.volume, period=period
             )
 
-    def check_conditions(self, action_type):
-        """检查指定动作类型的所有条件是否满足"""
+    def check_conditions(self, data, stock_code, action_type):
+        """检查指定股票的指定动作类型的所有条件是否满足"""
         conditions_met = True
 
         # 找出所有指定动作类型的条件
@@ -492,17 +504,17 @@ class DynamicBacktestStrategy(bt.Strategy):
             threshold_max = condition.get("threshold_max")
 
             # 区分基本面指标和技术指标
-            if indicator_type == "technical" and indicator_id in self.indicators:
-                # 处理技术指标
-                indicator_value = self.indicators[indicator_id][0]
-            elif (
-                indicator_type == "fundamental"
-                and indicator_id in self.fundamental_data
+            if (
+                indicator_type == "technical"
+                and indicator_id in self.stock_indicators[stock_code]
             ):
+                # 处理技术指标
+                indicator_value = self.stock_indicators[stock_code][indicator_id][0]
+            elif indicator_type == "fundamental":
                 # 处理基本面指标
-                current_date = self.data.datetime.date(0)
+                current_date = data.datetime.date(0)
                 indicator_value = self._get_fundamental_value(
-                    indicator_id, current_date
+                    indicator_id, stock_code, current_date
                 )
                 if indicator_value is None:
                     # 基本面数据不可用，条件不满足
@@ -529,88 +541,235 @@ class DynamicBacktestStrategy(bt.Strategy):
                         break
             elif condition_type == "cross_up":
                 # 交叉上穿需要检查前一天和当前的值
-                if indicator_id.startswith("MA"):
-                    # 例如：MA5上穿MA20
-                    # 假设condition的threshold_min中存储了被上穿的指标
-                    cross_indicator = threshold_min
-                    if cross_indicator in self.indicators:
-                        # 检查昨天的交叉情况
-                        if len(self) > 1:  # 确保有足够的数据点
-                            yesterday_indicator = self.indicators[indicator_id][-1]
-                            yesterday_cross = self.indicators[cross_indicator][-1]
-                            today_indicator = self.indicators[indicator_id][0]
-                            today_cross = self.indicators[cross_indicator][0]
+                if (
+                    indicator_id.startswith("MA")
+                    and threshold_min in self.stock_indicators[stock_code]
+                ):
+                    # 检查昨天的交叉情况
+                    if len(data) > 1:  # 确保有足够的数据点
+                        yesterday_indicator = self.stock_indicators[stock_code][
+                            indicator_id
+                        ][-1]
+                        yesterday_cross = self.stock_indicators[stock_code][
+                            threshold_min
+                        ][-1]
+                        today_indicator = self.stock_indicators[stock_code][
+                            indicator_id
+                        ][0]
+                        today_cross = self.stock_indicators[stock_code][threshold_min][
+                            0
+                        ]
 
-                            if not (
-                                yesterday_indicator < yesterday_cross
-                                and today_indicator > today_cross
-                            ):
-                                conditions_met = False
-                                break
-                        else:
+                        if not (
+                            yesterday_indicator < yesterday_cross
+                            and today_indicator > today_cross
+                        ):
                             conditions_met = False
                             break
-
+                    else:
+                        conditions_met = False
+                        break
             elif condition_type == "cross_down":
                 # 类似cross_up的逻辑，但方向相反
-                if indicator_id.startswith("MA"):
-                    cross_indicator = threshold_max
-                    if cross_indicator in self.indicators:
-                        if len(self) > 1:
-                            yesterday_indicator = self.indicators[indicator_id][-1]
-                            yesterday_cross = self.indicators[cross_indicator][-1]
-                            today_indicator = self.indicators[indicator_id][0]
-                            today_cross = self.indicators[cross_indicator][0]
+                if (
+                    indicator_id.startswith("MA")
+                    and threshold_max in self.stock_indicators[stock_code]
+                ):
+                    if len(data) > 1:
+                        yesterday_indicator = self.stock_indicators[stock_code][
+                            indicator_id
+                        ][-1]
+                        yesterday_cross = self.stock_indicators[stock_code][
+                            threshold_max
+                        ][-1]
+                        today_indicator = self.stock_indicators[stock_code][
+                            indicator_id
+                        ][0]
+                        today_cross = self.stock_indicators[stock_code][threshold_max][
+                            0
+                        ]
 
-                            if not (
-                                yesterday_indicator > yesterday_cross
-                                and today_indicator < today_cross
-                            ):
-                                conditions_met = False
-                                break
-                        else:
+                        if not (
+                            yesterday_indicator > yesterday_cross
+                            and today_indicator < today_cross
+                        ):
                             conditions_met = False
                             break
-            else:
-                # 如果指标不存在，条件不满足
-                conditions_met = False
-                break
+                    else:
+                        conditions_met = False
+                        break
 
         return conditions_met
 
-    def _get_fundamental_value(self, indicator_id, date):
-        """获取特定日期的基本面数据值"""
-        if (
-            indicator_id not in self.fundamental_data
-            or self.fundamental_data[indicator_id] is None
-        ):
+    def _get_fundamental_value(self, indicator_id, stock_code, date):
+        """获取特定日期特定股票的基本面数据值"""
+        if indicator_id not in self.fundamental_data:
             return None
 
         # 将日期转为字符串作为字典键
         date_str = date.strftime("%Y-%m-%d")
 
+        # 检查是否有该股票的基本面数据
+        if stock_code not in self.fundamental_data[indicator_id]:
+            return None
+
         # 从预先加载的基本面数据中查找
-        return self.fundamental_data[indicator_id].get(date_str, None)
+        return self.fundamental_data[indicator_id][stock_code].get(date_str, None)
 
     def next(self):
         """每个数据点的主策略逻辑"""
-        # 如果有未完成的订单，不操作
-        if self.order:
-            return
+        # 每隔rebalance_period天进行一次调仓
+        if self.day_count % self.params.rebalance_period == 0:
+            self.rebalance_portfolio()
 
-        # 检查是否满足买入条件
-        if not self.position:  # 当前没有持仓
-            if self.check_conditions("buy"):
-                self.log(f"买入信号触发, 价格: {self.data.close[0]}")
-                self.order = self.buy()
-        else:  # 当前有持仓
-            # 检查是否满足卖出条件
-            if self.check_conditions("sell"):
-                self.log(f"卖出信号触发, 价格: {self.data.close[0]}")
-                self.order = self.sell()
+        self.day_count += 1
+
+    def rebalance_portfolio(self):
+        """重新平衡投资组合"""
+        # 根据策略ID进行特殊处理
+        if "STRAT_001" in self.params.strategy_id:  # 小市值策略
+            self.rebalance_small_cap_strategy()
+        else:
+            self.rebalance_normal_strategy()
+
+    def rebalance_small_cap_strategy(self):
+        """小市值策略的调仓逻辑 - 优化版"""
+        # 1. 获取当前所有股票的市值
+        market_caps = {}
+        for i, data in enumerate(self.datas):
+            stock_code = data._name
+            current_date = data.datetime.date(0)
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            # 检查是否有市值数据
+            if (
+                "MARKET_CAP" in self.fundamental_data
+                and stock_code in self.fundamental_data["MARKET_CAP"]
+            ):
+                market_cap = self.fundamental_data["MARKET_CAP"][stock_code].get(
+                    date_str
+                )
+                if market_cap is not None:
+                    # 所有股票都记录市值，不再过滤
+                    market_caps[stock_code] = market_cap
+
+        # 2. 按市值从小到大排序
+        sorted_stocks = sorted(market_caps.items(), key=lambda x: x[1])
+
+        # 3. 选择股票策略 - 根据股票数量采用不同策略
+        if len(sorted_stocks) <= 1:
+            # 单只股票情况：直接使用该股票，无论市值大小
+            selected_stocks = [stock for stock, _ in sorted_stocks]
+            self.log(f"单只股票回测模式，选择股票: {selected_stocks[0]}")
+        else:
+            # 多只股票情况：筛选市值在20-30亿之间的股票
+            filtered_stocks = [
+                (stock, cap)
+                for stock, cap in sorted_stocks
+                if 2000000000 <= cap <= 3000000000
+            ]
+
+            # 如果没有符合条件的股票，取市值最小的3只
+            if not filtered_stocks:
+                self.log("没有股票符合市值条件(20-30亿)，选择市值最小的股票")
+                selected_stocks = [
+                    stock for stock, _ in sorted_stocks[: min(3, len(sorted_stocks))]
+                ]
+            else:
+                # 有符合条件的股票，取其中市值最小的3只
+                selected_stocks = [
+                    stock
+                    for stock, _ in filtered_stocks[: min(3, len(filtered_stocks))]
+                ]
+
+        self.log(f"小市值策略选择的股票: {selected_stocks}")
+
+        # 4. 卖出不在所选股票中的持仓
+        for i, data in enumerate(self.datas):
+            stock_code = data._name
+            position = self.getposition(data)
+
+            # 如果有持仓但不在所选股票中，则卖出
+            if position.size > 0 and stock_code not in selected_stocks:
+                self.close(data)
+                self.log(f"调仓卖出: {stock_code}, 价格: {data.close[0]}")
+
+        # 5. 买入所选股票
+        if selected_stocks:
+            # 计算每只股票可用资金
+            available_cash = self.broker.getcash() / len(selected_stocks)
+
+            for stock_code in selected_stocks:
+                for i, data in enumerate(self.datas):
+                    if data._name == stock_code:
+                        position = self.getposition(data)
+
+                        # 如果没有持仓，则买入
+                        if position.size == 0:
+                            # 计算可买入的股数
+                            price = data.close[0]
+                            size = int(available_cash / price)
+
+                            if size > 0:
+                                self.buy(data=data, size=size)
+                                self.log(
+                                    f"调仓买入: {stock_code}, 价格: {price}, 数量: {size}"
+                                )
+
+    def rebalance_normal_strategy(self):
+        """常规策略的调仓逻辑 - 优化版"""
+        # 1. 先找出符合买入条件的股票
+        buy_candidates = []
+        for i, data in enumerate(self.datas):
+            stock_code = data._name
+            position = self.getposition(data)
+
+            # 如果没有持仓，检查是否符合买入条件
+            if position.size == 0 and self.check_conditions(data, stock_code, "buy"):
+                buy_candidates.append(data)
+
+        # 2. 遍历所有股票，先处理卖出
+        for i, data in enumerate(self.datas):
+            stock_code = data._name
+            position = self.getposition(data)
+
+            # 如果已有持仓，检查是否需要卖出
+            if position.size > 0:
+                if self.check_conditions(data, stock_code, "sell"):
+                    self.close(data)
+                    self.log(f"卖出信号触发: {stock_code}, 价格: {data.close[0]}")
+
+        # 3. 根据买入候选股票数量分配资金
+        if buy_candidates:
+            # 单只股票时使用更大比例的资金
+            if len(self.datas) == 1:
+                allocation_percent = 0.9  # 单只股票使用90%资金
+            else:
+                # 根据候选股票数量合理分配资金，避免过度分散
+                if len(buy_candidates) <= 3:
+                    allocation_percent = 0.8 / len(buy_candidates)  # 平均分配80%资金
+                else:
+                    allocation_percent = 0.9 / len(buy_candidates)  # 平均分配90%资金
+
+            # 执行买入操作
+            for data in buy_candidates:
+                stock_code = data._name
+                available_cash = self.broker.getcash() * allocation_percent
+                price = data.close[0]
+                size = int(available_cash / price)
+
+                if size > 0:
+                    self.buy(data=data, size=size)
+                    self.log(
+                        f"买入信号触发: {stock_code}, 价格: {price}, 数量: {size}, 资金占比: {allocation_percent:.1%}"
+                    )
 
     def notify_order(self, order):
         """订单状态更新通知"""
+        # 获取订单对应的数据
+        data = order.data
+        stock_code = data._name
+
         if order.status in [order.Submitted, order.Accepted]:
             # 订单提交或接受，不做操作
             return
@@ -619,49 +778,48 @@ class DynamicBacktestStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    f"买入执行成功: 价格: {order.executed.price}, "
+                    f"买入执行成功: {stock_code}, 价格: {order.executed.price}, "
                     f"成本: {order.executed.value}, "
                     f"手续费: {order.executed.comm}"
                 )
-                self.buyprice = order.executed.price
-                self.buycomm = order.executed.comm
             else:  # 卖出
-                profit = (order.executed.price - self.buyprice) * order.executed.size
                 self.log(
-                    f"卖出执行成功: 价格: {order.executed.price}, "
+                    f"卖出执行成功: {stock_code}, 价格: {order.executed.price}, "
                     f"成本: {order.executed.value}, "
-                    f"手续费: {order.executed.comm}, "
-                    f"利润: {profit}"
+                    f"手续费: {order.executed.comm}"
                 )
 
             # 记录交易
             self.trades.append(
                 {
+                    "stock_code": stock_code,
                     "type": "buy" if order.isbuy() else "sell",
                     "price": order.executed.price,
                     "size": order.executed.size,
                     "value": order.executed.value,
                     "commission": order.executed.comm,
-                    "date": self.data.datetime.date(0),
+                    "date": data.datetime.date(0),
                 }
             )
-
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log(f"订单取消/保证金不足/拒绝: {order.status}")
+            self.log(f"订单取消/保证金不足/拒绝: {stock_code}, {order.status}")
 
         # 重置订单
-        self.order = None
+        self.orders[stock_code] = None
 
     def notify_trade(self, trade):
         """交易完成通知"""
         if not trade.isclosed:
             return
 
-        self.log(f"交易利润: 毛利润: {trade.pnl}, 净利润: {trade.pnlcomm}")
+        stock_code = trade.data._name
+        self.log(
+            f"交易利润: {stock_code}, 毛利润: {trade.pnl}, 净利润: {trade.pnlcomm}"
+        )
 
     def log(self, txt, dt=None):
         """日志函数"""
-        dt = dt or self.data.datetime.date(0)
+        dt = dt or self.datas[0].datetime.date(0)
         if self.params.debug_mode:
             print(f"{dt.isoformat()}, {txt}")
 
@@ -682,19 +840,21 @@ class BacktestEngine:
     def run_backtest(
         self,
         strategy_id: str,
-        stock_code: str,
-        start_date: str,
-        end_date: str,
+        stock_code: str = None,
+        index_code: str = None,
+        start_date: str = None,
+        end_date: str = None,
         initial_cash: float = 100000.0,
         user_id: str = "admin_001",
         debug_mode: bool = False,
     ) -> Dict[str, Any]:
         """
-        运行回测
+        运行投资组合回测 - 同时处理多只股票
 
         Args:
             strategy_id: 策略ID
-            stock_code: 股票代码
+            stock_code: 单只股票代码（与index_code互斥）
+            index_code: 指数代码（与stock_code互斥）
             start_date: 开始日期 (YYYY-MM-DD)
             end_date: 结束日期 (YYYY-MM-DD)
             initial_cash: 初始资金
@@ -704,6 +864,18 @@ class BacktestEngine:
         Returns:
             回测结果字典
         """
+        # 参数验证
+        if stock_code and index_code:
+            raise ValueError("stock_code和index_code不能同时提供，请只选择一种回测模式")
+        if not stock_code and not index_code:
+            raise ValueError("必须提供stock_code或index_code中的一个")
+
+        # 设置默认日期范围
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
         # 1. 获取策略信息
         strategy_info = self.db_manager.get_strategy_by_id(strategy_id)
         if not strategy_info:
@@ -714,27 +886,51 @@ class BacktestEngine:
         if not strategy_conditions:
             raise ValueError(f"策略 {strategy_id} 没有定义条件")
 
-        # 3. 获取股票数据
-        stock_data = self.db_manager.get_stock_data(stock_code, start_date, end_date)
-        if stock_data.empty:
-            raise ValueError(
-                f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的数据"
-            )
-
-        # 4. 创建Backtrader Cerebro引擎
+        # 3. 创建Cerebro引擎
         cerebro = bt.Cerebro()
 
-        # 5. 添加数据
-        data = self.prepare_data_feed(stock_data)
-        cerebro.adddata(data)
+        # 4. 确定要加载的股票列表
+        if index_code:
+            # 指数回测 - 获取指数成分股
+            self.logger.info(f"获取指数 {index_code} 的成分股...")
+            stock_codes = self.db_manager.get_index_stocks(index_code)
+            if not stock_codes:
+                raise ValueError(f"未找到指数 {index_code} 的成分股")
+            self.logger.info(f"将使用 {len(stock_codes)} 只指数成分股进行回测")
+            backtest_type = "INDEX"
+            code_for_result = index_code  # 用于结果保存
+        else:
+            # 单只股票回测
+            stock_codes = [stock_code]
+            self.logger.info(f"将对单只股票 {stock_code} 进行回测")
+            backtest_type = "STOCK"
+            code_for_result = stock_code  # 用于结果保存
+
+        # 5. 加载股票数据
+        valid_stock_codes = []
+        for code in stock_codes:
+            stock_data = self.db_manager.get_stock_data(code, start_date, end_date)
+            if not stock_data.empty:
+                data_feed = self.prepare_data_feed(stock_data)
+                # 重要：设置数据源名称为股票代码，以便在策略中区分
+                data_feed._name = code
+                cerebro.adddata(data_feed)
+                valid_stock_codes.append(code)
+            else:
+                self.logger.warning(
+                    f"未找到股票 {code} 在 {start_date} 至 {end_date} 的数据，已跳过"
+                )
+
+        if not valid_stock_codes:
+            raise ValueError(f"未找到任何股票在 {start_date} 至 {end_date} 的数据")
 
         # 6. 设置初始资金
         cerebro.broker.setcash(initial_cash)
+        cerebro.broker.setcommission(commission=0.0005)  # 千分之五的手续费
 
-        # 设置手续费，千分之五
-        cerebro.broker.setcommission(commission=0.0005)
+        # 7. 准备基本面数据 - 对于多股票要重新组织数据结构
+        fundamental_data = {}
 
-        # 7. 添加策略
         # 检查是否需要基本面数据
         needs_fundamental = False
         for condition in strategy_conditions:
@@ -742,81 +938,94 @@ class BacktestEngine:
                 needs_fundamental = True
                 break
 
-        # 如果需要，加载基本面数据
-        fundamental_data = {}
         if needs_fundamental:
             self.logger.info("检测到基本面指标，正在加载基本面数据...")
-            fundamental_data = self._load_fundamental_data(
-                stock_code, start_date, end_date, strategy_conditions
-            )
 
-        # 在添加策略时传入基本面数据
+            # 处理需要的基本面指标
+            needed_indicators = set()
+            for condition in strategy_conditions:
+                if condition.get("indicator_type") == "fundamental":
+                    needed_indicators.add(condition["indicator_id"])
+
+            # 为每个指标加载数据
+            for indicator_id in needed_indicators:
+                fundamental_data[indicator_id] = {}
+
+                for code in valid_stock_codes:
+                    if indicator_id == "MARKET_CAP":
+                        data = self._load_market_cap_data(code, start_date, end_date)
+                    elif indicator_id == "PB_RATIO":
+                        data = self._load_pb_ratio_data(code, start_date, end_date)
+                    elif indicator_id == "DEBT_RATIO":
+                        data = self._load_debt_ratio_data(code, start_date, end_date)
+                    elif indicator_id == "CURRENT_RATIO":
+                        data = self._load_current_ratio_data(code, start_date, end_date)
+                    else:
+                        self.logger.warning(f"未知的基本面指标: {indicator_id}")
+                        data = {}
+
+                    # 将数据存储为 {indicator_id: {stock_code: {date: value}}}
+                    fundamental_data[indicator_id][code] = data
+
+        # 8. 添加策略
         cerebro.addstrategy(
-            DynamicBacktestStrategy,
+            PortfolioStrategy,
+            strategy_id=strategy_id,
             strategy_conditions=strategy_conditions,
             fundamental_data=fundamental_data,  # 添加基本面数据
+            rebalance_period=5,  # 默认5天调仓
             debug_mode=debug_mode,
         )
 
-        # 8. 添加分析器
+        # 9. 添加分析器
         cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe")
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
         cerebro.addanalyzer(bt.analyzers.Returns, _name="returns")
 
-        # 9. 运行回测
-        self.logger.info(f"开始运行策略 {strategy_id} 在 {stock_code} 上的回测...")
+        # 10. 运行回测
+        if len(valid_stock_codes) > 1:
+            self.logger.info(
+                f"开始运行策略 {strategy_id} 的回测 ({len(valid_stock_codes)}只股票)..."
+            )
+        else:
+            self.logger.info(
+                f"开始运行策略 {strategy_id} 在 {valid_stock_codes[0]} 上的回测..."
+            )
+
         results = cerebro.run()
         strat = results[0]
 
         # 10. 分析结果
-        backtest_result = self.analyze_results(
-            strat, strategy_id, stock_code, start_date, end_date, initial_cash, user_id
+        result = self.analyze_backtest_results(
+            strat,
+            strategy_id,
+            start_date,
+            end_date,
+            initial_cash,
+            user_id,
         )
 
         # 11. 保存结果到数据库
-        report_id = self.db_manager.save_backtest_report(backtest_result)
-        backtest_result["report_id"] = report_id
+        result["backtest_type"] = backtest_type
+        result["stock_code"] = code_for_result
+        result["component_count"] = (
+            len(valid_stock_codes) if backtest_type == "INDEX" else None
+        )
 
-        # 12. 绘制结果图表
+        report_id = self.db_manager.save_backtest_report(result)
+        result["report_id"] = report_id
+
+        # 12. 绘制投资组合结果图表
         if BACKTEST_DEFAULTS["plot_results"]:
-            self.plot_results(cerebro, strategy_info["strategy_name"], stock_code)
+            self.plot_backtest_results(
+                cerebro,
+                strategy_info["strategy_name"],
+                valid_stock_codes,
+                backtest_type,
+            )
 
-        return backtest_result
-
-    def _load_fundamental_data(
-        self, stock_code, start_date, end_date, strategy_conditions
-    ):
-        """加载基本面数据"""
-        fundamental_data = {}
-
-        # 获取所有需要的基本面指标
-        needed_indicators = []
-        for condition in strategy_conditions:
-            if condition.get("indicator_type") == "fundamental":
-                needed_indicators.append(condition["indicator_id"])
-
-        # 为每个指标加载数据
-        for indicator_id in needed_indicators:
-            if indicator_id == "MARKET_CAP":
-                # 从StockValuation表加载市值数据
-                data = self._load_market_cap_data(stock_code, start_date, end_date)
-            elif indicator_id == "PB_RATIO":
-                # 从StockValuation表加载市净率数据
-                data = self._load_pb_ratio_data(stock_code, start_date, end_date)
-            elif indicator_id == "DEBT_RATIO":
-                # 从BalanceSheet表加载负债率数据
-                data = self._load_debt_ratio_data(stock_code, start_date, end_date)
-            elif indicator_id == "CURRENT_RATIO":
-                # 从BalanceSheet表加载流动比率数据
-                data = self._load_current_ratio_data(stock_code, start_date, end_date)
-            else:
-                self.logger.warning(f"未知的基本面指标: {indicator_id}")
-                data = {}
-
-            fundamental_data[indicator_id] = data
-
-        return fundamental_data
+        return result
 
     def _load_market_cap_data(self, stock_code, start_date, end_date):
         """从StockValuation表加载市值数据"""
@@ -977,11 +1186,10 @@ class BacktestEngine:
 
         return data
 
-    def analyze_results(
+    def analyze_backtest_results(
         self,
         strat,
         strategy_id: str,
-        stock_code: str,
         start_date: str,
         end_date: str,
         initial_cash: float,
@@ -993,7 +1201,6 @@ class BacktestEngine:
         Args:
             strat: 策略实例
             strategy_id: 策略ID
-            stock_code: 股票代码
             start_date: 开始日期
             end_date: 结束日期
             initial_cash: 初始资金
@@ -1054,19 +1261,25 @@ class BacktestEngine:
             "win_rate": win_rate,
             "profit_loss_ratio": profit_loss_ratio,
             "trade_count": total_trades,
-            "stock_code": stock_code,
         }
 
         return result
 
-    def plot_results(self, cerebro: bt.Cerebro, strategy_name: str, stock_code: str):
+    def plot_backtest_results(
+        self,
+        cerebro: bt.Cerebro,
+        strategy_name: str,
+        stock_codes: List[str],
+        backtest_type: str,
+    ):
         """
-        绘制回测结果图表并保存到文件
+        绘制回测结果图表
 
         Args:
             cerebro: Cerebro实例
             strategy_name: 策略名称
-            stock_code: 股票代码
+            stock_codes: 股票代码列表
+            backtest_type: 回测类型，"STOCK"或"INDEX"
         """
         try:
             # 设置图表输出目录
@@ -1074,18 +1287,27 @@ class BacktestEngine:
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
-            # 生成文件名（策略名称_股票代码_时间戳.png）
+            # 生成文件名
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = f"{output_dir}/{strategy_name}_{stock_code}_{timestamp}.png"
 
-            # 绘制图表并获取返回值
+            if backtest_type == "INDEX" or len(stock_codes) > 1:
+                # 多只股票回测
+                title = f"{strategy_name} - 回测结果 ({len(stock_codes)}只股票)"
+                filename = f"{output_dir}/{strategy_name}_Multiple_{len(stock_codes)}_{timestamp}.png"
+                plot_style = "line"  # 使用线图
+            else:
+                # 单只股票回测
+                stock_code = stock_codes[0]
+                title = f"{strategy_name} - {stock_code} 回测结果"
+                filename = f"{output_dir}/{strategy_name}_{stock_code}_{timestamp}.png"
+                plot_style = "candle"  # 使用蜡烛图
+
+            # 绘制图表
             figs = cerebro.plot(
-                style="candlestick",
-                barup="red",
-                bardown="green",
+                style=plot_style,
                 grid=True,
                 subplot=True,
-                title=f"{strategy_name} - {stock_code}回测结果",
+                title=title,
             )
 
             # 保存图表
@@ -1107,11 +1329,6 @@ def main():
     parser.add_argument("--strategy", type=str, help="策略ID")
     parser.add_argument("--stock", type=str, help="股票代码")
     parser.add_argument("--index", type=str, help="使用指定指数的成分股进行回测")
-    parser.add_argument(
-        "--stocks",
-        type=str,
-        help="指定多只股票代码，用逗号分隔",
-    )
     parser.add_argument("--start", type=str, help="开始日期 (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument("--cash", type=float, default=100000.0, help="初始资金")
@@ -1172,72 +1389,56 @@ def main():
             if not args.end:
                 args.end = datetime.now().strftime("%Y-%m-%d")
 
-            # 确定要处理的股票列表
-            stock_codes = []
-
             if args.index:
-                # 从数据库获取指数成分股
-                logger.info(f"获取指数 {args.index} 的成分股...")
-                stock_codes = db_manager.get_index_stocks(args.index)
-                logger.info(f"将使用{len(stock_codes)}只指数成分股进行回测")
+                # 指数回测
+                logger.info(f"使用指数 {args.index} 进行回测")
+                result = backtest_engine.run_backtest(
+                    strategy_id=args.strategy,
+                    index_code=args.index,
+                    start_date=args.start,
+                    end_date=args.end,
+                    initial_cash=args.cash,
+                    user_id=args.user,
+                    debug_mode=args.debug,
+                )
 
-            elif args.stocks:
-                # 处理多只股票参数
-                stock_codes = args.stocks.split(",")
-                logger.info(f"将使用指定的{len(stock_codes)}只股票进行回测")
+                # 显示回测结果
+                print(f"\n📊 指数 {args.index} 回测结果:")
+                if "component_count" in result:
+                    print(f"  成分股数量: {result['component_count']}只")
+                print(f"  初始资金: {result['initial_fund']:.2f}")
+                print(f"  最终资金: {result['final_fund']:.2f}")
+                print(f"  总收益率: {result['total_return']*100:.2f}%")
+                print(f"  年化收益率: {result['annual_return']*100:.2f}%")
+                print(f"  最大回撤: {result['max_drawdown']*100:.2f}%")
+                print(f"  夏普比率: {result['sharpe_ratio']:.4f}")
+                print(f"  总交易次数: {result['trade_count']}")
 
             elif args.stock:
-                # 单只股票模式
-                stock_codes = [args.stock]
-
-            else:
-                print("\n❓ 请指定股票代码(--stock)、多只股票(--stocks)或指数(--index)")
-                return
-
-            # 批量回测所有股票
-            all_results = []
-            for i, stock_code in enumerate(stock_codes):
-                logger.info(f"正在回测第{i+1}/{len(stock_codes)}只股票: {stock_code}")
-                try:
-                    result = backtest_engine.run_backtest(
-                        args.strategy,
-                        stock_code,
-                        args.start,
-                        args.end,
-                        args.cash,
-                        args.user,
-                        args.debug,
-                    )
-                    all_results.append(result)
-                except Exception as e:
-                    logger.error(f"回测股票{stock_code}时出错: {e}")
-
-            # 显示汇总结果
-            if all_results:
-                # 计算平均结果
-                avg_return = sum(r["total_return"] for r in all_results) / len(
-                    all_results
+                # 单只股票回测
+                logger.info(f"对股票 {args.stock} 进行回测")
+                result = backtest_engine.run_backtest(
+                    strategy_id=args.strategy,
+                    stock_code=args.stock,
+                    start_date=args.start,
+                    end_date=args.end,
+                    initial_cash=args.cash,
+                    user_id=args.user,
+                    debug_mode=args.debug,
                 )
-                best_stock = max(all_results, key=lambda x: x["total_return"])
-                worst_stock = min(all_results, key=lambda x: x["total_return"])
 
-                print("\n📊 批量回测汇总结果:")
-                print(f"  总共回测: {len(all_results)}/{len(stock_codes)}只股票")
-                print(f"  平均收益率: {avg_return*100:.2f}%")
-                print(
-                    f"  最佳股票: {best_stock['stock_code']} (收益率: {best_stock['total_return']*100:.2f}%)"
-                )
-                print(
-                    f"  最差股票: {worst_stock['stock_code']} (收益率: {worst_stock['total_return']*100:.2f}%)"
-                )
-        else:
-            print("\n❓ 请指定策略ID和股票代码，或使用--list参数查看可用策略")
-            print(
-                "示例: python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ"
-            )
-            print("查看帮助: python strategy_backtest.py --help")
-
-        logger.info("策略回测脚本执行完成！")
+                # 显示回测结果
+                print(f"\n📊 股票 {args.stock} 回测结果:")
+                print(f"  报告ID: {result['report_id']}")
+                print(f"  初始资金: {result['initial_fund']:.2f}")
+                print(f"  最终资金: {result['final_fund']:.2f}")
+                print(f"  总收益率: {result['total_return']*100:.2f}%")
+                print(f"  年化收益率: {result['annual_return']*100:.2f}%")
+                print(f"  最大回撤: {result['max_drawdown']*100:.2f}%")
+                print(f"  夏普比率: {result['sharpe_ratio']:.4f}")
+                print(f"  胜率: {result['win_rate']*100:.2f}%")
+                print(f"  盈亏比: {result['profit_loss_ratio']:.4f}")
+                print(f"  总交易次数: {result['trade_count']}")
 
     except FileNotFoundError as e:
         logger.error(f"配置文件错误: {e}")
@@ -1269,17 +1470,13 @@ def show_usage():
 2️⃣ 运行单只股票回测:
    python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2023-12-31
 
-3️⃣ 运行多只股票回测:
-   python strategy_backtest.py --strategy STRAT_001 --stocks 000001.SZ,600519.SH
-
-4️⃣ 使用指数成分股回测:
+3️⃣ 使用指数成分股回测:
    python strategy_backtest.py --strategy STRAT_001 --index 000300.SH
 
 📋 参数说明:
    --strategy     : 策略ID
-   --stock        : 股票代码
-   --stocks       : 多只股票代码(逗号分隔)
-   --index        : 指数代码(将使用其成分股)
+   --stock        : 股票代码（单只股票回测）
+   --index        : 指数代码（将使用其成分股进行回测）
    --start        : 开始日期 (YYYY-MM-DD)，默认为一年前
    --end          : 结束日期 (YYYY-MM-DD)，默认为今天
    --cash         : 初始资金，默认为100000

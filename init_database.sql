@@ -263,11 +263,14 @@ CREATE TABLE TradingSignal (
 -- =============================================
 -- 7. 创建回测报告表
 -- =============================================
+-- 回测报告表 - 增强版，支持指数回测
 CREATE TABLE BacktestReport (
     report_id VARCHAR(50) NOT NULL,
     strategy_id VARCHAR(50) NOT NULL,
     user_id VARCHAR(50) NOT NULL,
-    stock_code VARCHAR(20) NOT NULL,
+    backtest_type ENUM('STOCK', 'INDEX') NOT NULL DEFAULT 'STOCK',
+    stock_code VARCHAR(20) NOT NULL COMMENT '单股票代码或指数代码',
+    component_count INT DEFAULT NULL COMMENT '指数成分股数量',
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     initial_fund DECIMAL(15,2) NOT NULL,
@@ -285,7 +288,8 @@ CREATE TABLE BacktestReport (
     PRIMARY KEY (report_id),
     INDEX idx_strategy_generate_time (strategy_id, report_generate_time),
     INDEX idx_user_id (user_id),
-    INDEX idx_stock_code (stock_code),  -- 添加股票代码索引
+    INDEX idx_stock_code (stock_code),
+    INDEX idx_backtest_type (backtest_type),
     
     CONSTRAINT fk_report_strategy FOREIGN KEY (strategy_id) REFERENCES Strategy(strategy_id),
     CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES User(user_id),
@@ -295,7 +299,8 @@ CREATE TABLE BacktestReport (
     CONSTRAINT chk_drawdown CHECK (max_drawdown >= 0),
     CONSTRAINT chk_win_rate CHECK (win_rate IS NULL OR win_rate BETWEEN 0 AND 1),
     CONSTRAINT chk_ratio CHECK (profit_loss_ratio IS NULL OR profit_loss_ratio >= 0),
-    CONSTRAINT chk_trade_count CHECK (trade_count >= 0)
+    CONSTRAINT chk_trade_count CHECK (trade_count >= 0),
+    CONSTRAINT chk_component_count CHECK (component_count IS NULL OR component_count > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='回测报告表';
 
 -- =============================================

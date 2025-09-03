@@ -91,20 +91,15 @@ python connection_tester.py
 # 查看使用说明
 python stock_data_fetcher.py --help
 
-# 准备指定股票的回测数据（默认3年数据）
-python stock_data_fetcher.py --backtest --stocks 000001.SZ,600519.SH
+# 准备单只股票的回测数据（默认3年数据）
+python stock_data_fetcher.py --stock 000001.SZ --days 1095
 
-# 自定义历史数据天数
-python stock_data_fetcher.py --backtest --stocks 000001.SZ --days 730
-
-# 使用指数成分股进行回测（如沪深300）
-python stock_data_fetcher.py --backtest --index 000300.SH
+# 准备指数成分股数据（如沪深300）
+python stock_data_fetcher.py --index 000300.SH
 
 # 检查哪些股票有足够的回测数据（数据完整性>95%）
 python stock_data_fetcher.py --check
 ```
-
-> **注意**：每次运行数据准备命令时，系统会自动获取股票基本信息、估值数据、财务数据等所有回测必要的数据，无需单独执行额外命令。
 
 ### 4. 策略回测与分析
 
