@@ -334,13 +334,13 @@ VALUES ('admin_001', 'admin', 'hashed_password_here', 'admin', 'active', 'admin@
 
 -- 插入常用技术指标定义
 INSERT INTO TechnicalIndicator (indicator_id, indicator_name, indicator_type, calculation_method, min_value, max_value, default_period, description) VALUES
-('RSI', 'RSI相对强弱指标', 'momentum', 'talib.RSI', 0, 100, 14, 'RSI指标用于判断股票超买超卖状态'),
-('MACD', 'MACD指标', 'trend', 'talib.MACD', NULL, NULL, NULL, 'MACD用于判断趋势变化和买卖时机'),
-('BOLL', '布林带指标', 'volatility', 'talib.BBANDS', NULL, NULL, 20, '布林带用于判断价格波动区间'),
-('MA5', '5日移动平均线', 'trend', 'talib.SMA', NULL, NULL, 5, '短期趋势指标'),
-('MA20', '20日移动平均线', 'trend', 'talib.SMA', NULL, NULL, 20, '中期趋势指标'),
-('VOLUME_MA', '成交量移动平均', 'volume', 'talib.SMA', NULL, NULL, 10, '成交量趋势指标'),
-('VOLATILITY_PREDICT', '预测波动率', 'custom', 'custom_model', 0, 1, NULL, 'AI模型预测的未来波动率');
+('RSI', 'RSI相对强弱指标', 'technical', 'talib.RSI', 0, 100, 14, 'RSI指标用于判断股票超买超卖状态'),
+('MACD', 'MACD指标', 'technical', 'talib.MACD', NULL, NULL, NULL, 'MACD用于判断趋势变化和买卖时机'),
+('BOLL', '布林带指标', 'technical', 'talib.BBANDS', NULL, NULL, 20, '布林带用于判断价格波动区间'),
+('MA5', '5日移动平均线', 'technical', 'talib.SMA', NULL, NULL, 5, '短期趋势指标'),
+('MA20', '20日移动平均线', 'technical', 'talib.SMA', NULL, NULL, 20, '中期趋势指标'),
+('VOLUME_MA', '成交量移动平均', 'technical', 'talib.SMA', NULL, NULL, 10, '成交量趋势指标'),
+('VOLATILITY_PREDICT', '预测波动率', 'technical', 'custom_model', 0, 1, NULL, 'AI模型预测的未来波动率');
 
 -- 添加新的技术指标
 INSERT INTO TechnicalIndicator (indicator_id, indicator_name, indicator_type, calculation_method, min_value, max_value, default_period, description) VALUES
@@ -348,52 +348,52 @@ INSERT INTO TechnicalIndicator (indicator_id, indicator_name, indicator_type, ca
 ('PB_RATIO', '市净率', 'fundamental', 'valuation.pb_ratio', NULL, NULL, NULL, '市净率指标'),
 ('DEBT_RATIO', '资产负债率', 'fundamental', 'custom', 0, 1, NULL, '总负债/总资产'),
 ('CURRENT_RATIO', '流动比率', 'fundamental', 'custom', 0, NULL, NULL, '流动资产/流动负债'),
-('DUAL_THRUST', '通道突破', 'custom', 'custom', NULL, NULL, 10, 'Dual Thrust策略指标');
+('DUAL_THRUST', '通道突破', 'fundamental', 'custom', NULL, NULL, 10, 'Dual Thrust策略指标');
 
 -- 插入小市值策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_004', '小市值策略', 'builtin', 'admin_001', '筛选出市值介于20-30亿的股票，选取其中市值最小的三只股票，每天开盘买入，持有五个交易日，然后调仓。');
+('STRAT_001', '小市值策略', 'builtin', 'admin_001', '筛选出市值介于20-30亿的股票，选取其中市值最小的三只股票，每天开盘买入，持有五个交易日，然后调仓。');
 
 -- 插入双均线策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_005', '双均线策略', 'builtin', 'admin_001', '通过5日均线和价格的关系进行买卖。当价格上穿5日均线1%时买入，当价格下穿5日均线时卖出。');
+('STRAT_002', '双均线策略', 'builtin', 'admin_001', '通过5日均线和价格的关系进行买卖。当价格上穿5日均线1%时买入，当价格下穿5日均线时卖出。');
 
 -- 插入银行股轮动策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_006', '银行股轮动策略', 'builtin', 'admin_001', '始终持有沪深300银行指数成分股中市净率最低的股份制银行，每周检查一次，如果发现有新的股份制银行市净率低于原有的股票，则予以换仓。');
+('STRAT_003', '银行股轮动策略', 'builtin', 'admin_001', '始终持有沪深300银行指数成分股中市净率最低的股份制银行，每周检查一次，如果发现有新的股份制银行市净率低于原有的股票，则予以换仓。');
 
 -- 插入低估价值选股策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_007', '低估价值选股策略', 'builtin', 'admin_001', '1.市净率小于2；2.负债比例高于市场平均值；3.企业的流动资产至少是流动负债的1.2倍；4.每年四次调仓，即在1/4/7/10月调仓；5.可加入止损(十天HS300跌幅达10%清仓)。');
+('STRAT_004', '低估价值选股策略', 'builtin', 'admin_001', '1.市净率小于2；2.负债比例高于市场平均值；3.企业的流动资产至少是流动负债的1.2倍；4.每年四次调仓，即在1/4/7/10月调仓；5.可加入止损(十天HS300跌幅达10%清仓)。');
 
 -- 插入Dual Thrust策略
 INSERT INTO Strategy (strategy_id, strategy_name, strategy_type, creator_id, strategy_desc) VALUES
-('STRAT_008', 'Dual Thrust策略', 'builtin', 'admin_001', '1.首先计算Range=Max(HH-LC,HC-LL)；2.设定上轨=Open+K1*Range，下轨=Open-K2*Range；3.当价格向上突破上轨时买入，当价格向下突破下轨时卖出。');
+('STRAT_005', 'Dual Thrust策略', 'builtin', 'admin_001', '1.首先计算Range=Max(HH-LC,HC-LL)；2.设定上轨=Open+K1*Range，下轨=Open-K2*Range；3.当价格向上突破上轨时买入，当价格向下突破下轨时卖出。');
 
 -- 为策略添加条件
 -- 小市值策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
-('COND_005', 'STRAT_004', 'MARKET_CAP', 'between', 2000000000, 3000000000, 'buy', 1);
+('COND_001', 'STRAT_001', 'MARKET_CAP', 'between', 2000000000, 3000000000, 'buy', 1);
 
 -- 双均线策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
-('COND_006', 'STRAT_005', 'MA5', 'greater', 1.01, NULL, 'buy', 1),
-('COND_007', 'STRAT_005', 'MA5', 'less', NULL, 1.0, 'sell', 2);
+('COND_002', 'STRAT_002', 'MA5', 'greater', 1.01, NULL, 'buy', 1),
+('COND_003', 'STRAT_002', 'MA5', 'less', NULL, 1.0, 'sell', 2);
 
 -- 银行股轮动策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
-('COND_008', 'STRAT_006', 'PB_RATIO', 'less', NULL, NULL, 'buy', 1);
+('COND_004', 'STRAT_003', 'PB_RATIO', 'less', NULL, NULL, 'buy', 1);
 
 -- 低估价值选股策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
-('COND_009', 'STRAT_007', 'PB_RATIO', 'less', NULL, 2.0, 'buy', 1),
-('COND_010', 'STRAT_007', 'DEBT_RATIO', 'greater', NULL, NULL, 'buy', 2),
-('COND_011', 'STRAT_007', 'CURRENT_RATIO', 'greater', 1.2, NULL, 'buy', 3);
+('COND_005', 'STRAT_004', 'PB_RATIO', 'less', NULL, 2.0, 'buy', 1),
+('COND_006', 'STRAT_004', 'DEBT_RATIO', 'greater', NULL, NULL, 'buy', 2),
+('COND_007', 'STRAT_004', 'CURRENT_RATIO', 'greater', 1.2, NULL, 'buy', 3);
 
 -- Dual Thrust策略条件
 INSERT INTO StrategyCondition (condition_id, strategy_id, indicator_id, condition_type, threshold_min, threshold_max, signal_action, condition_order) VALUES
-('COND_012', 'STRAT_008', 'DUAL_THRUST', 'greater', NULL, NULL, 'buy', 1),
-('COND_013', 'STRAT_008', 'DUAL_THRUST', 'less', NULL, NULL, 'sell', 2);
+('COND_008', 'STRAT_005', 'DUAL_THRUST', 'greater', NULL, NULL, 'buy', 1),
+('COND_009', 'STRAT_005', 'DUAL_THRUST', 'less', NULL, NULL, 'sell', 2);
 
 -- =============================================
 -- 10. 创建视图（便于查询）
