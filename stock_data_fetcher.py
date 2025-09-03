@@ -74,6 +74,9 @@ class StockDataManager:
         self.pro = ts.pro_api()
         self.logger = logger
 
+        # 交易日历缓存
+        self.trade_dates = []
+
     def connect_database(self):
         """连接数据库"""
         try:
@@ -918,6 +921,13 @@ def main():
 
     args = parser.parse_args()
 
+    # 验证必须提供 --stock 或 --index 参数
+    if not args.stock and not args.index:
+        logger.error("必须提供 --stock 或 --index 参数")
+        print("错误: 必须提供 --stock 或 --index 参数")
+        show_usage()
+        return
+
     try:
         # 加载配置
         config = load_config(args.config)
@@ -932,13 +942,6 @@ def main():
 
         # 连接数据库
         stock_manager.connect_database()
-
-        # 默认股票列表
-        default_stocks = [
-            "000001.SZ",  # 平安银行
-            "600519.SH",  # 贵州茅台
-            "000858.SZ",  # 五粮液
-        ]
 
         # 准备回测数据
         stock_codes = []
@@ -962,10 +965,6 @@ def main():
             # 单只股票模式
             stock_codes = [args.stock]
             logger.info(f"将为单只股票 {args.stock} 准备数据")
-        else:
-            # 使用默认股票
-            stock_codes = default_stocks
-            logger.info(f"未指定股票或指数，将使用默认的 {len(default_stocks)} 只股票")
 
         # 准备所有必要的数据
         logger.info("准备回测所需的完整数据...")
@@ -993,8 +992,6 @@ def main():
             logger.info(f"指数 {args.index} 的成分股数据准备完成，可以进行回测了")
         elif args.stock:
             logger.info(f"股票 {args.stock} 的数据准备完成，可以进行回测了")
-        else:
-            logger.info("默认股票数据准备完成，可以进行回测了")
 
     except Exception as e:
         logger.error(f"处理过程中发生错误: {e}")
@@ -1019,16 +1016,16 @@ def show_usage():
 📋 参数说明:
    --start        : 开始日期 (YYYY-MM-DD)，必须提供
    --end          : 结束日期 (YYYY-MM-DD)，必须提供
-   --stock        : 准备单只股票的回测数据
+   --stock        : 准备单只股票的回测数据（必须提供--stock或--index）
    --index        : 使用指定指数的成分股，例如：000300.SH (沪深300)
    --config       : 配置文件路径，默认为config.json
    --help         : 显示帮助信息
 
 ⚠️ 注意事项:
-   - 开始日期和结束日期为必填参数
+   - 必须提供开始日期和结束日期
+   - 必须指定股票代码(--stock)或指数代码(--index)
    - 数据将保存到数据库相应的表中
    - 确保config.json中包含正确的数据库密码和Tushare令牌
-   - 准备大量股票数据可能需要较长时间
     """
     )
 
