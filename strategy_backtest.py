@@ -226,6 +226,31 @@ class DatabaseManager:
             if cursor:
                 cursor.close()
 
+    def get_index_stocks(self, index_code: str) -> List[str]:
+        """获取指数成分股列表"""
+        try:
+            cursor = self.connection.cursor()
+            query = """
+            SELECT DISTINCT stock_code 
+            FROM IndexComponent 
+            WHERE index_code = %s
+            """
+            cursor.execute(query, (index_code,))
+            results = cursor.fetchall()
+
+            if not results:
+                self.logger.warning(f"未找到指数 {index_code} 的成分股")
+                return []
+
+            # 返回股票代码列表
+            return [row[0] for row in results]
+        except Exception as e:
+            self.logger.error(f"获取指数成分股失败: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+
     def get_all_strategies(self) -> List[Dict[str, Any]]:
         """获取所有可用的策略"""
         try:
@@ -1075,239 +1100,22 @@ class BacktestEngine:
             self.logger.error(f"绘制回测结果图表失败: {e}")
             self.logger.error(traceback.format_exc())
 
-    def run_monte_carlo_simulation(
-        self,
-        strategy_id: str,
-        stock_code: str,
-        start_date: str,
-        end_date: str,
-        initial_cash: float = 100000.0,
-        simulations: int = 50,
-        user_id: str = "admin_001",
-    ) -> Dict[str, Any]:
-        """
-        运行蒙特卡洛模拟
-
-        Args:
-            strategy_id: 策略ID
-            stock_code: 股票代码
-            start_date: 开始日期
-            end_date: 结束日期
-            initial_cash: 初始资金
-            simulations: 模拟次数
-            user_id: 用户ID
-
-        Returns:
-            模拟结果字典
-        """
-        self.logger.info(
-            f"开始运行蒙特卡洛模拟，策略: {strategy_id}, 股票: {stock_code}, 模拟次数: {simulations}"
-        )
-
-        # 获取股票数据
-        stock_data = self.db_manager.get_stock_data(stock_code, start_date, end_date)
-        if stock_data.empty:
-            raise ValueError(
-                f"未找到股票 {stock_code} 在 {start_date} 至 {end_date} 的数据"
-            )
-
-        # 获取策略信息
-        strategy_info = self.db_manager.get_strategy_by_id(strategy_id)
-        if not strategy_info:
-            raise ValueError(f"未找到策略ID: {strategy_id}")
-
-        # 获取策略条件
-        strategy_conditions = self.db_manager.get_strategy_conditions(strategy_id)
-        if not strategy_conditions:
-            raise ValueError(f"策略 {strategy_id} 没有定义条件")
-
-        # 存储每次模拟的结果
-        results = []
-
-        for i in range(simulations):
-            # 创建新的Cerebro实例
-            cerebro = bt.Cerebro()
-
-            # 添加数据
-            data = self.prepare_data_feed(stock_data.copy())
-            cerebro.adddata(data)
-
-            # 设置初始资金
-            cerebro.broker.setcash(initial_cash)
-
-            # 设置手续费
-            cerebro.broker.setcommission(commission=0.0005)
-
-            # 添加策略，每次模拟可能稍微调整参数
-            cerebro.addstrategy(
-                DynamicBacktestStrategy,
-                strategy_conditions=strategy_conditions,
-                debug_mode=False,
-            )
-
-            # 添加分析器
-            cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
-            cerebro.addanalyzer(bt.analyzers.Returns, _name="returns")
-
-            # 运行模拟
-            sim_results = cerebro.run()
-            strat = sim_results[0]
-
-            # 获取关键指标
-            drawdown = strat.analyzers.drawdown.get_analysis()
-            returns = strat.analyzers.returns.get_analysis()
-
-            # 计算最终资金
-            final_value = strat.broker.getvalue()
-
-            # 计算总收益率
-            total_return = (final_value / initial_cash) - 1.0
-
-            # 最大回撤
-            max_drawdown = drawdown.get("max", {}).get("drawdown", 0) / 100
-
-            # 将结果添加到列表
-            results.append(
-                {
-                    "simulation": i + 1,
-                    "total_return": total_return,
-                    "max_drawdown": max_drawdown,
-                    "final_value": final_value,
-                }
-            )
-
-            if (i + 1) % 10 == 0:
-                self.logger.info(f"已完成 {i + 1}/{simulations} 次模拟")
-
-        # 分析蒙特卡洛模拟结果
-        df_results = pd.DataFrame(results)
-
-        # 计算统计量
-        avg_return = df_results["total_return"].mean()
-        std_return = df_results["total_return"].std()
-        avg_drawdown = df_results["max_drawdown"].mean()
-        worst_drawdown = df_results["max_drawdown"].max()
-
-        # 计算置信区间
-        return_95_ci = (
-            avg_return - 1.96 * std_return / np.sqrt(simulations),
-            avg_return + 1.96 * std_return / np.sqrt(simulations),
-        )
-
-        # 统计有多少次模拟的最大回撤小于15%
-        drawdown_under_15 = (df_results["max_drawdown"] < 0.15).sum() / simulations
-
-        # 构建结果字典
-        monte_carlo_result = {
-            "strategy_id": strategy_id,
-            "stock_code": stock_code,
-            "simulations": simulations,
-            "avg_return": avg_return,
-            "std_return": std_return,
-            "return_95_ci_low": return_95_ci[0],
-            "return_95_ci_high": return_95_ci[1],
-            "avg_drawdown": avg_drawdown,
-            "worst_drawdown": worst_drawdown,
-            "prob_drawdown_under_15": drawdown_under_15,
-            "simulation_results": df_results.to_dict(orient="records"),
-        }
-
-        # 绘制蒙特卡洛模拟结果
-        self.plot_monte_carlo_results(
-            monte_carlo_result, strategy_info["strategy_name"], stock_code
-        )
-
-        return monte_carlo_result
-
-    def plot_monte_carlo_results(
-        self, results: Dict[str, Any], strategy_name: str, stock_code: str
-    ):
-        """
-        绘制蒙特卡洛模拟结果
-
-        Args:
-            results: 模拟结果字典
-            strategy_name: 策略名称
-            stock_code: 股票代码
-        """
-        try:
-            # 创建图表
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-
-            # 绘制收益率分布
-            df_results = pd.DataFrame(results["simulation_results"])
-            ax1.hist(df_results["total_return"] * 100, bins=20, alpha=0.7, color="blue")
-            ax1.axvline(
-                results["avg_return"] * 100,
-                color="red",
-                linestyle="dashed",
-                linewidth=2,
-            )
-            ax1.set_title(f"{strategy_name} - 收益率分布")
-            ax1.set_xlabel("总收益率 (%)")
-            ax1.set_ylabel("频率")
-            ax1.grid(True)
-
-            # 绘制最大回撤分布
-            ax2.hist(
-                df_results["max_drawdown"] * 100, bins=20, alpha=0.7, color="green"
-            )
-            ax2.axvline(
-                results["avg_drawdown"] * 100,
-                color="red",
-                linestyle="dashed",
-                linewidth=2,
-            )
-            ax2.axvline(15, color="black", linestyle="dashed", linewidth=2)
-            ax2.set_title(f"{strategy_name} - 最大回撤分布")
-            ax2.set_xlabel("最大回撤 (%)")
-            ax2.set_ylabel("频率")
-            ax2.grid(True)
-
-            plt.tight_layout()
-
-            # 添加文字说明
-            fig.text(
-                0.5,
-                0.01,
-                f"平均收益率: {results['avg_return']*100:.2f}% | "
-                f"95%置信区间: [{results['return_95_ci_low']*100:.2f}%, {results['return_95_ci_high']*100:.2f}%] | "
-                f"平均最大回撤: {results['avg_drawdown']*100:.2f}% | "
-                f"最大回撤<15%的概率: {results['prob_drawdown_under_15']*100:.1f}%",
-                ha="center",
-                fontsize=12,
-            )
-
-            # 保存图表
-            output_dir = BACKTEST_DEFAULTS["output_dir"]
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = (
-                f"{output_dir}/{strategy_name}_{stock_code}_MonteCarlo_{timestamp}.png"
-            )
-            plt.savefig(filename)
-            self.logger.info(f"蒙特卡洛模拟结果图表已保存至: {filename}")
-
-            # 关闭图表
-            plt.close()
-
-        except Exception as e:
-            self.logger.error(f"绘制蒙特卡洛模拟结果图表失败: {e}")
-
 
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="量化交易系统 - 策略回测脚本")
     parser.add_argument("--strategy", type=str, help="策略ID")
     parser.add_argument("--stock", type=str, help="股票代码")
+    parser.add_argument("--index", type=str, help="使用指定指数的成分股进行回测")
+    parser.add_argument(
+        "--stocks",
+        type=str,
+        help="指定多只股票代码，用逗号分隔",
+    )
     parser.add_argument("--start", type=str, help="开始日期 (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument("--cash", type=float, default=100000.0, help="初始资金")
     parser.add_argument("--user", type=str, default="admin_001", help="用户ID")
-    parser.add_argument("--montecarlo", action="store_true", help="运行蒙特卡洛模拟")
-    parser.add_argument("--simulations", type=int, default=50, help="蒙特卡洛模拟次数")
     parser.add_argument("--list", action="store_true", help="列出所有可用策略")
     parser.add_argument(
         "--config", type=str, default="config.json", help="配置文件路径"
@@ -1357,88 +1165,71 @@ def main():
             else:
                 print("❌ 未找到可用策略")
 
-        elif args.strategy and args.stock:
+        elif args.strategy:
             # 设置默认日期范围（如果未提供）
             if not args.start:
                 args.start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
             if not args.end:
                 args.end = datetime.now().strftime("%Y-%m-%d")
 
-            logger.info(
-                f"回测配置: 策略ID={args.strategy}, 股票代码={args.stock}, 时间范围={args.start}至{args.end}, 初始资金={args.cash}"
-            )
+            # 确定要处理的股票列表
+            stock_codes = []
 
-            if args.montecarlo:
-                # 运行蒙特卡洛模拟
-                logger.info(f"开始运行蒙特卡洛模拟 ({args.simulations}次)...")
-                monte_carlo_results = backtest_engine.run_monte_carlo_simulation(
-                    args.strategy,
-                    args.stock,
-                    args.start,
-                    args.end,
-                    args.cash,
-                    args.simulations,
-                    args.user,
-                )
+            if args.index:
+                # 从数据库获取指数成分股
+                logger.info(f"获取指数 {args.index} 的成分股...")
+                stock_codes = db_manager.get_index_stocks(args.index)
+                logger.info(f"将使用{len(stock_codes)}只指数成分股进行回测")
 
-                # 显示蒙特卡洛模拟结果摘要
-                print("\n📊 蒙特卡洛模拟结果:")
-                print(f"  平均收益率: {monte_carlo_results['avg_return']*100:.2f}%")
-                print(f"  收益率标准差: {monte_carlo_results['std_return']*100:.2f}%")
-                print(
-                    f"  95%置信区间: [{monte_carlo_results['return_95_ci_low']*100:.2f}%, {monte_carlo_results['return_95_ci_high']*100:.2f}%]"
-                )
-                print(f"  平均最大回撤: {monte_carlo_results['avg_drawdown']*100:.2f}%")
-                print(
-                    f"  最坏情况回撤: {monte_carlo_results['worst_drawdown']*100:.2f}%"
-                )
-                print(
-                    f"  最大回撤<15%的概率: {monte_carlo_results['prob_drawdown_under_15']*100:.1f}%"
-                )
+            elif args.stocks:
+                # 处理多只股票参数
+                stock_codes = args.stocks.split(",")
+                logger.info(f"将使用指定的{len(stock_codes)}只股票进行回测")
+
+            elif args.stock:
+                # 单只股票模式
+                stock_codes = [args.stock]
 
             else:
-                # 运行标准回测
-                logger.info("开始运行回测...")
-                backtest_results = backtest_engine.run_backtest(
-                    args.strategy,
-                    args.stock,
-                    args.start,
-                    args.end,
-                    args.cash,
-                    args.user,
-                    args.debug,
+                print("\n❓ 请指定股票代码(--stock)、多只股票(--stocks)或指数(--index)")
+                return
+
+            # 批量回测所有股票
+            all_results = []
+            for i, stock_code in enumerate(stock_codes):
+                logger.info(f"正在回测第{i+1}/{len(stock_codes)}只股票: {stock_code}")
+                try:
+                    result = backtest_engine.run_backtest(
+                        args.strategy,
+                        stock_code,
+                        args.start,
+                        args.end,
+                        args.cash,
+                        args.user,
+                        args.debug,
+                    )
+                    all_results.append(result)
+                except Exception as e:
+                    logger.error(f"回测股票{stock_code}时出错: {e}")
+
+            # 显示汇总结果
+            if all_results:
+                # 计算平均结果
+                avg_return = sum(r["total_return"] for r in all_results) / len(
+                    all_results
                 )
+                best_stock = max(all_results, key=lambda x: x["total_return"])
+                worst_stock = min(all_results, key=lambda x: x["total_return"])
 
-                # 显示回测结果
-                print("\n📊 回测结果:")
-                print(f"  报告ID: {backtest_results['report_id']}")
-                print(f"  初始资金: {backtest_results['initial_fund']:.2f}")
-                print(f"  最终资金: {backtest_results['final_fund']:.2f}")
-                print(f"  总收益率: {backtest_results['total_return']*100:.2f}%")
-                print(f"  年化收益率: {backtest_results['annual_return']*100:.2f}%")
-                print(f"  最大回撤: {backtest_results['max_drawdown']*100:.2f}%")
-
-                # 安全处理可能为None的值
-                sharpe_ratio = backtest_results.get("sharpe_ratio")
-                if sharpe_ratio is not None:
-                    print(f"  夏普比率: {sharpe_ratio:.4f}")
-                else:
-                    print(f"  夏普比率: 不适用")
-
-                win_rate = backtest_results.get("win_rate")
-                if win_rate is not None:
-                    print(f"  胜率: {win_rate*100:.2f}%")
-                else:
-                    print(f"  胜率: 不适用")
-
-                profit_loss_ratio = backtest_results.get("profit_loss_ratio")
-                if profit_loss_ratio is not None:
-                    print(f"  盈亏比: {profit_loss_ratio:.4f}")
-                else:
-                    print(f"  盈亏比: 不适用")
-
-                print(f"  总交易次数: {backtest_results['trade_count']}")
-
+                print("\n📊 批量回测汇总结果:")
+                print(f"  总共回测: {len(all_results)}/{len(stock_codes)}只股票")
+                print(f"  平均收益率: {avg_return*100:.2f}%")
+                print(
+                    f"  最佳股票: {best_stock['stock_code']} (收益率: {best_stock['total_return']*100:.2f}%)"
+                )
+                print(
+                    f"  最差股票: {worst_stock['stock_code']} (收益率: {worst_stock['total_return']*100:.2f}%)"
+                )
         else:
             print("\n❓ 请指定策略ID和股票代码，或使用--list参数查看可用策略")
             print(
@@ -1475,21 +1266,24 @@ def show_usage():
 1️⃣ 列出所有可用策略:
    python strategy_backtest.py --list
 
-2️⃣ 运行标准回测:
-   python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2023-12-31 --cash 100000
+2️⃣ 运行单只股票回测:
+   python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --start 2023-01-01 --end 2023-12-31
 
-3️⃣ 运行蒙特卡洛模拟:
-   python strategy_backtest.py --strategy STRAT_001 --stock 000001.SZ --montecarlo --simulations 100
+3️⃣ 运行多只股票回测:
+   python strategy_backtest.py --strategy STRAT_001 --stocks 000001.SZ,600519.SH
+
+4️⃣ 使用指数成分股回测:
+   python strategy_backtest.py --strategy STRAT_001 --index 000300.SH
 
 📋 参数说明:
    --strategy     : 策略ID
    --stock        : 股票代码
+   --stocks       : 多只股票代码(逗号分隔)
+   --index        : 指数代码(将使用其成分股)
    --start        : 开始日期 (YYYY-MM-DD)，默认为一年前
    --end          : 结束日期 (YYYY-MM-DD)，默认为今天
    --cash         : 初始资金，默认为100000
    --user         : 用户ID，默认为admin_001
-   --montecarlo   : 启用蒙特卡洛模拟
-   --simulations  : 蒙特卡洛模拟次数，默认为50
    --list         : 列出所有可用策略
    --config       : 配置文件路径，默认为config.json
    --debug        : 开启调试模式
@@ -1498,7 +1292,6 @@ def show_usage():
 ⚠️ 注意事项:
    - 回测结果会保存到数据库的BacktestReport表中
    - 图表结果会保存到backtest_results目录
-   - 使用蒙特卡洛模拟可以评估策略的稳健性
    - 策略需要在数据库中预先定义
     """
     )
