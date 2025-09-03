@@ -382,6 +382,7 @@ class PortfolioStrategy(bt.Strategy):
     """组合回测策略类，可同时处理多只股票并根据策略条件动态配置"""
 
     params = (
+        ("strategy_id", ""),  # 添加策略ID参数
         ("strategy_conditions", []),  # 策略条件列表
         ("fundamental_data", {}),  # 基本面数据
         ("rebalance_period", 5),  # 调仓周期，默认5天
@@ -656,33 +657,45 @@ class PortfolioStrategy(bt.Strategy):
         # 2. 按市值从小到大排序
         sorted_stocks = sorted(market_caps.items(), key=lambda x: x[1])
 
-        # 3. 选择股票策略 - 根据股票数量采用不同策略
-        if len(sorted_stocks) <= 1:
-            # 单只股票情况：直接使用该股票，无论市值大小
-            selected_stocks = [stock for stock, _ in sorted_stocks]
-            self.log(f"单只股票回测模式，选择股票: {selected_stocks[0]}")
+        # 处理没有市值数据的情况
+        if not sorted_stocks:
+            self.log("未找到任何股票的市值数据，使用所有可用股票")
+            # 直接使用所有可用股票
+            selected_stocks = [data._name for data in self.datas]
         else:
-            # 多只股票情况：筛选市值在20-30亿之间的股票
-            filtered_stocks = [
-                (stock, cap)
-                for stock, cap in sorted_stocks
-                if 2000000000 <= cap <= 3000000000
-            ]
-
-            # 如果没有符合条件的股票，取市值最小的3只
-            if not filtered_stocks:
-                self.log("没有股票符合市值条件(20-30亿)，选择市值最小的股票")
-                selected_stocks = [
-                    stock for stock, _ in sorted_stocks[: min(3, len(sorted_stocks))]
-                ]
+            # 3. 选择股票策略 - 根据股票数量采用不同策略
+            if len(sorted_stocks) <= 1:
+                # 单只股票情况：直接使用该股票，无论市值大小
+                selected_stocks = [stock for stock, _ in sorted_stocks]
+                self.log(f"单只股票回测模式，选择股票: {selected_stocks[0]}")
             else:
-                # 有符合条件的股票，取其中市值最小的3只
-                selected_stocks = [
-                    stock
-                    for stock, _ in filtered_stocks[: min(3, len(filtered_stocks))]
+                # 多只股票情况：筛选市值在20-30亿之间的股票
+                filtered_stocks = [
+                    (stock, cap)
+                    for stock, cap in sorted_stocks
+                    if 2000000000 <= cap <= 3000000000
                 ]
 
-        self.log(f"小市值策略选择的股票: {selected_stocks}")
+                # 如果没有符合条件的股票，取市值最小的3只
+                if not filtered_stocks:
+                    self.log("没有股票符合市值条件(20-30亿)，选择市值最小的股票")
+                    selected_stocks = [
+                        stock
+                        for stock, _ in sorted_stocks[: min(3, len(sorted_stocks))]
+                    ]
+                else:
+                    # 有符合条件的股票，取其中市值最小的3只
+                    selected_stocks = [
+                        stock
+                        for stock, _ in filtered_stocks[: min(3, len(filtered_stocks))]
+                    ]
+
+        # 确保至少打印一条有效的日志
+        if selected_stocks:
+            self.log(f"小市值策略选择的股票: {selected_stocks}")
+        else:
+            self.log("警告：没有选择任何股票")
+            return  # 如果没有选择股票，直接返回，不执行买卖操作
 
         # 4. 卖出不在所选股票中的持仓
         for i, data in enumerate(self.datas):
@@ -1411,7 +1424,12 @@ def main():
                 print(f"  总收益率: {result['total_return']*100:.2f}%")
                 print(f"  年化收益率: {result['annual_return']*100:.2f}%")
                 print(f"  最大回撤: {result['max_drawdown']*100:.2f}%")
-                print(f"  夏普比率: {result['sharpe_ratio']:.4f}")
+                sharpe_display = (
+                    f"{result['sharpe_ratio']:.4f}"
+                    if result["sharpe_ratio"] is not None
+                    else "N/A"
+                )
+                print(f"  夏普比率: {sharpe_display}")
                 print(f"  总交易次数: {result['trade_count']}")
 
             elif args.stock:
@@ -1435,10 +1453,26 @@ def main():
                 print(f"  总收益率: {result['total_return']*100:.2f}%")
                 print(f"  年化收益率: {result['annual_return']*100:.2f}%")
                 print(f"  最大回撤: {result['max_drawdown']*100:.2f}%")
-                print(f"  夏普比率: {result['sharpe_ratio']:.4f}")
-                print(f"  胜率: {result['win_rate']*100:.2f}%")
-                print(f"  盈亏比: {result['profit_loss_ratio']:.4f}")
-                print(f"  总交易次数: {result['trade_count']}")
+
+                sharpe_display = (
+                    f"{result['sharpe_ratio']:.4f}"
+                    if result["sharpe_ratio"] is not None
+                    else "N/A"
+                )
+                win_rate_display = (
+                    f"{result['win_rate']*100:.2f}%"
+                    if result["win_rate"] is not None
+                    else "N/A"
+                )
+                profit_loss_display = (
+                    f"{result['profit_loss_ratio']:.4f}"
+                    if result["profit_loss_ratio"] is not None
+                    else "N/A"
+                )
+
+                print(f"  夏普比率: {sharpe_display}")
+                print(f"  胜率: {win_rate_display}")
+                print(f"  盈亏比: {profit_loss_display}")
 
     except FileNotFoundError as e:
         logger.error(f"配置文件错误: {e}")
