@@ -83,3 +83,43 @@ CREATE TABLE daily_basic (
     INDEX idx_trade_date (trade_date),
     INDEX idx_ts_code (ts_code)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'Tushare daily_basic 本地缓存';
+
+-- 指数基本信息表
+CREATE TABLE index_basic (
+    ts_code VARCHAR(20) NOT NULL,      -- TS代码
+    name VARCHAR(100),                 -- 简称
+    fullname VARCHAR(200),             -- 指数全称
+    market VARCHAR(20),                -- 市场
+    publisher VARCHAR(100),            -- 发布方
+    index_type VARCHAR(50),            -- 指数风格
+    category VARCHAR(50),              -- 指数类别
+    base_date VARCHAR(8),              -- 基期
+    base_point DOUBLE,                 -- 基点
+    list_date VARCHAR(8),              -- 发布日期
+    weight_rule VARCHAR(100),          -- 加权方式
+    `desc` TEXT,                       -- 描述
+    exp_date VARCHAR(8),               -- 终止日期
+
+    PRIMARY KEY (ts_code),
+    INDEX idx_market (market),
+    INDEX idx_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tushare index_basic 本地缓存';
+
+-- 指数日线行情表
+CREATE TABLE index_daily (
+    ts_code VARCHAR(20) NOT NULL,      -- TS指数代码
+    trade_date VARCHAR(8) NOT NULL,    -- 交易日
+    `close` DOUBLE,                    -- 收盘点位
+    `open` DOUBLE,                     -- 开盘点位
+    high DOUBLE,                       -- 最高点位
+    low DOUBLE,                        -- 最低点位
+    pre_close DOUBLE,                  -- 昨日收盘点
+    `change` DOUBLE,                   -- 涨跌点
+    pct_chg DOUBLE,                    -- 涨跌幅（%）
+    vol DOUBLE,                        -- 成交量（手）
+    amount DOUBLE,                     -- 成交额（千元）
+
+    PRIMARY KEY (ts_code, trade_date),
+    INDEX idx_trade_date (trade_date),
+    INDEX idx_ts_code (ts_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tushare index_daily 本地缓存';

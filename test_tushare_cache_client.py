@@ -24,12 +24,8 @@ class TestTushareCacheClient(unittest.TestCase):
 
     def test_trade_cal(self):
         # 选取一个常见区间
-        df_api = self.pro.trade_cal(
-            exchange="SSE", start_date="20240101", end_date="20240110"
-        )
-        df_cache = self.client.trade_cal(
-            exchange="SSE", start_date="20240101", end_date="20240110"
-        )
+        df_api = self.pro.trade_cal(start_date="20240101", end_date="20240110")
+        df_cache = self.client.trade_cal(start_date="20240101", end_date="20240110")
         self.assert_df_equal(df_api[df_cache.columns], df_cache)
 
     def test_stock_basic(self):
@@ -39,11 +35,9 @@ class TestTushareCacheClient(unittest.TestCase):
             fields="ts_code,symbol,name,area,industry,fullname,enname,cnspell,market,exchange,curr_type,list_status,list_date,delist_date,is_hs,act_name,act_ent_type",
         )
         df_cache = self.client.stock_basic()
-        # 只比较两者的主要字段
         self.assert_df_equal(df_api[df_cache.columns], df_cache)
 
     def test_daily(self):
-        # 选取一只股票和一个短时间段
         ts_code = "000001.SZ"
         start_date = "20240101"
         end_date = "20240110"
@@ -53,7 +47,6 @@ class TestTushareCacheClient(unittest.TestCase):
         df_cache = self.client.daily(
             ts_code=ts_code, start_date=start_date, end_date=end_date
         )
-        # 只比较两者的主要字段
         self.assert_df_equal(df_api[df_cache.columns], df_cache)
 
     def test_daily_basic(self):
@@ -64,6 +57,24 @@ class TestTushareCacheClient(unittest.TestCase):
             ts_code=ts_code, start_date=start_date, end_date=end_date
         )
         df_cache = self.client.daily_basic(
+            ts_code=ts_code, start_date=start_date, end_date=end_date
+        )
+        self.assert_df_equal(df_api[df_cache.columns], df_cache)
+
+    def test_index_basic(self):
+        fields = "ts_code,name,fullname,market,publisher,index_type,category,base_date,base_point,list_date,weight_rule,desc,exp_date"
+        df_api = self.pro.index_basic(market="SSE", fields=fields)
+        df_cache = self.client.index_basic()
+        self.assert_df_equal(df_api[df_cache.columns], df_cache)
+
+    def test_index_daily(self):
+        ts_code = "000001.SH"  # 上证指数
+        start_date = "20240101"
+        end_date = "20240110"
+        df_api = self.pro.index_daily(
+            ts_code=ts_code, start_date=start_date, end_date=end_date
+        )
+        df_cache = self.client.index_daily(
             ts_code=ts_code, start_date=start_date, end_date=end_date
         )
         self.assert_df_equal(df_api[df_cache.columns], df_cache)
