@@ -74,9 +74,6 @@ class StockDataManager:
         self.pro = ts.pro_api()
         self.logger = logger
 
-        # 交易日历缓存
-        self.trade_dates = []
-
     def connect_database(self):
         """连接数据库"""
         try:
@@ -110,6 +107,26 @@ class StockDataManager:
         if self.connection:
             self.connection.close()
             self.logger.info("数据库连接已关闭")
+
+    def initialize_trade_dates(self):
+        """初始化交易日历"""
+        try:
+            self.logger.info(f"初始化从{self.start_date}到{self.end_date}的交易日历...")
+            df = self.pro.trade_cal(
+                exchange="SSE",
+                start_date=self.start_date_ts,
+                end_date=self.end_date_ts,
+                is_open=1,
+            )
+            if df.empty:
+                self.logger.warning(f"未获取到交易日信息")
+                self.trade_dates = []
+            else:
+                self.trade_dates = df["cal_date"].tolist()
+                self.logger.info(f"成功初始化{len(self.trade_dates)}个交易日")
+        except Exception as e:
+            self.logger.error(f"初始化交易日历失败: {e}")
+            self.trade_dates = []
 
     def get_stock_data(
         self,
@@ -246,45 +263,6 @@ class StockDataManager:
         finally:
             if cursor:
                 cursor.close()
-
-    def get_stock_list(self, list_status="L") -> List[str]:
-        """获取股票列表"""
-        try:
-            df = self.pro.stock_basic(
-                exchange="",
-                list_status=list_status,
-                fields="ts_code,symbol,name,area,industry,list_date",
-            )
-            if df.empty:
-                self.logger.warning(f"未获取到股票列表")
-                return []
-
-            stock_list = df["ts_code"].tolist()
-            self.logger.info(f"成功获取{len(stock_list)}只股票信息")
-            return stock_list
-        except Exception as e:
-            self.logger.error(f"获取股票列表失败: {e}")
-            return []
-
-    def get_available_trade_dates(self) -> List[str]:
-        """获取回测期间的交易日列表"""
-        try:
-            df = self.pro.trade_cal(
-                exchange="SSE",
-                start_date=self.start_date_ts,
-                end_date=self.end_date_ts,
-                is_open=1,
-            )
-            if df.empty:
-                self.logger.warning(f"未获取到交易日信息")
-                return []
-
-            trade_dates = df["cal_date"].tolist()
-            self.logger.info(f"成功获取{len(trade_dates)}个交易日")
-            return trade_dates
-        except Exception as e:
-            self.logger.error(f"获取交易日失败: {e}")
-            return []
 
     def check_stock_data_completeness(self, stock_code: str) -> Tuple[float, int, int]:
         """检查指定股票在回测期间的数据完整性"""
@@ -519,154 +497,6 @@ class StockDataManager:
             return self.insert_data(df, "StockValuation")
         except Exception as e:
             self.logger.error(f"获取股票估值数据失败: {e}")
-            return 0
-
-    def get_balance_sheet(self, period=None) -> int:
-        """获取资产负债表数据"""
-        if not period:
-            # 默认获取最近的季度数据
-            today = datetime.now()
-            year = today.year
-            month = today.month
-            if month < 4:
-                period = f"{year-1}1231"
-            elif month < 7:
-                period = f"{year}0331"
-            elif month < 10:
-                period = f"{year}0630"
-            else:
-                period = f"{year}0930"
-
-        try:
-            self.logger.info(f"获取{period}的资产负债表数据...")
-            df = self.pro.balancesheet_vip(
-                period=period,
-                fields="ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_assets,total_liab,total_cur_assets,total_cur_liab,fixed_assets,monetary_cap,total_hldr_eqy_inc_min_int",
-            )
-
-            if df.empty:
-                self.logger.warning(f"未获取到{period}的资产负债表数据")
-                return 0
-
-            # 重命名列
-            df = df.rename(
-                columns={
-                    "ts_code": "stock_code",
-                    "end_date": "report_period",
-                    "ann_date": "announcement_date",
-                    "total_liab": "total_liability",
-                    "total_cur_assets": "total_current_assets",
-                    "total_cur_liab": "total_current_liability",
-                    "monetary_cap": "cash_equivalents",
-                    "total_hldr_eqy_inc_min_int": "total_equity",
-                }
-            )
-
-            # 转换日期格式
-            df["report_period"] = pd.to_datetime(df["report_period"]).dt.date
-            df["announcement_date"] = pd.to_datetime(df["announcement_date"]).dt.date
-
-            # 选择需要的列
-            cols = [
-                "stock_code",
-                "report_period",
-                "announcement_date",
-                "total_assets",
-                "total_liability",
-                "total_current_assets",
-                "total_current_liability",
-                "fixed_assets",
-                "cash_equivalents",
-                "total_equity",
-            ]
-
-            # 确保所有列都存在
-            for col in cols:
-                if col not in df.columns:
-                    df[col] = None
-
-            df = df[cols]
-
-            # 添加数据源和采集时间
-            df["data_source"] = "tushare"
-            df["collect_time"] = datetime.now()
-
-            # 插入数据库
-            return self.insert_data(df, "BalanceSheet")
-        except Exception as e:
-            self.logger.error(f"获取资产负债表数据失败: {e}")
-            return 0
-
-    def get_income_statement(self, period=None) -> int:
-        """获取利润表数据"""
-        if not period:
-            # 默认获取最近的季度数据，与资产负债表相同
-            today = datetime.now()
-            year = today.year
-            month = today.month
-            if month < 4:
-                period = f"{year-1}1231"
-            elif month < 7:
-                period = f"{year}0331"
-            elif month < 10:
-                period = f"{year}0630"
-            else:
-                period = f"{year}0930"
-
-        try:
-            self.logger.info(f"获取{period}的利润表数据...")
-            df = self.pro.income_vip(
-                period=period,
-                fields="ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,total_revenue,operate_profit,total_profit,n_income,basic_eps",
-            )
-
-            if df.empty:
-                self.logger.warning(f"未获取到{period}的利润表数据")
-                return 0
-
-            # 重命名列
-            df = df.rename(
-                columns={
-                    "ts_code": "stock_code",
-                    "end_date": "report_period",
-                    "ann_date": "announcement_date",
-                    "operate_profit": "operating_profit",
-                    "n_income": "net_profit",
-                    "basic_eps": "eps_basic",
-                }
-            )
-
-            # 转换日期格式
-            df["report_period"] = pd.to_datetime(df["report_period"]).dt.date
-            df["announcement_date"] = pd.to_datetime(df["announcement_date"]).dt.date
-
-            # 选择需要的列
-            cols = [
-                "stock_code",
-                "report_period",
-                "announcement_date",
-                "total_revenue",
-                "operating_profit",
-                "total_profit",
-                "net_profit",
-                "eps_basic",
-            ]
-
-            # 确保所有列都存在
-            for col in cols:
-                if col not in df.columns:
-                    df[col] = None
-
-            df = df[cols]
-
-            # 添加数据源和采集时间
-            df["data_source"] = "tushare"
-            df["collect_time"] = datetime.now()
-
-            # 插入数据库
-            return self.insert_data(df, "IncomeStatement")
-        except Exception as e:
-            self.logger.error(f"获取利润表数据失败: {e}")
             return 0
 
     def get_index_component(self, index_code="000300.SH") -> int:

@@ -740,6 +740,27 @@ class TushareCacheClient:
         finally:
             cur.close()
 
+    def get_latest_index_members(self, index_code: str) -> list:
+        """
+        获取指定指数最新一期的成分股代码列表。
+
+        参数:
+            index_code (str): 指数代码（如 '399300.SZ'）
+
+        返回:
+            List[str]: 最新一期成分股的股票代码列表（如 ['600519.SH', ...]）
+
+        说明:
+            - 该方法直接通过 Tushare 实时拉取数据，不使用本地缓存。
+            - 自动筛选出 trade_date 最大值对应的成分股。
+        """
+        df = self.pro.index_weight(index_code=index_code)
+        if df.empty:
+            return []
+        latest_date = df["trade_date"].max()
+        latest_df = df[df["trade_date"] == latest_date]
+        return latest_df["con_code"].tolist()
+
     # 一次性全量初始化（会产生日志并与 Tushare 交互），仅在需要时调用或由 __main__ 使用
     def init_all_from_tushare(self):
         logger.info("开始从 Tushare 全量初始化 trade_cal 与 stock_basic")
