@@ -16,7 +16,7 @@ CREATE TABLE User (
     user_id VARCHAR(50) NOT NULL COMMENT '用户唯一ID',
     user_name VARCHAR(50) NOT NULL COMMENT '用户名（唯一，仅允许英文、数字、下划线，不能与Tushare表名重复）',
     user_password VARCHAR(255) NOT NULL COMMENT '用户密码（加密存储）',
-    user_role ENUM('admin', 'analyst') NOT NULL DEFAULT 'viewer' COMMENT '用户角色',
+    user_role ENUM('admin', 'analyst') NOT NULL DEFAULT 'analyst' COMMENT '用户角色',
     user_status ENUM('active', 'inactive', 'locked') NOT NULL DEFAULT 'active' COMMENT '用户状态',
     user_email VARCHAR(100) COMMENT '邮箱',
     user_phone VARCHAR(20) COMMENT '手机号',
@@ -44,26 +44,7 @@ CREATE TABLE Indicator (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技术/自定义指标定义表';
 
 -- =============================================
--- 3. 创建参数表
--- =============================================
-CREATE TABLE Param (
-    param_owner_type ENUM('indicator', 'strategy') NOT NULL COMMENT '参数归属类型：indicator=指标参数，strategy=策略参数',
-    owner_name VARCHAR(100) NOT NULL COMMENT '归属对象名（indicator_name或strategy_name）',
-    creator_name VARCHAR(50) NOT NULL COMMENT '归属对象创建者用户名',
-    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID（如daily_ema_12）',
-    data_id VARCHAR(100) NOT NULL COMMENT '数据来源ID，如daily.close或system.MACD',
-    param_type ENUM('table', 'indicator') NOT NULL COMMENT '参数类型：table=查Tushare表，indicator=引用其他指标',
-    pre_period INT DEFAULT 0 COMMENT '向前取历史天数',
-    post_period INT DEFAULT 0 COMMENT '向后预测天数',
-    agg_func VARCHAR(50) DEFAULT NULL COMMENT '聚合函数，如SMA、EMA、MAX等',
-    PRIMARY KEY (param_owner_type, creator_name, owner_name, param_id),
-    INDEX idx_owner (param_owner_type, creator_name, owner_name),
-    -- 可加外键约束到Indicator或Strategy（需用触发器或应用层保证）
-    -- CONSTRAINT fk_param_indicator FOREIGN KEY (creator_name, owner_name) REFERENCES Indicator(creator_name, indicator_name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='参数定义表，支持指标和策略参数';
-
--- =============================================
--- 4. 创建策略表
+-- 3. 创建策略表
 -- =============================================
 CREATE TABLE Strategy (
     creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用User.user_name',
@@ -87,6 +68,40 @@ CREATE TABLE Strategy (
     INDEX idx_scope_id (scope_id),
     CONSTRAINT fk_strategy_creator FOREIGN KEY (creator_name) REFERENCES User(user_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='选股策略表';
+
+-- =============================================
+-- 4. 创建参数表、参数-指标关系表、参数-策略关系表
+-- =============================================
+CREATE TABLE Param (
+    creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
+    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
+    data_id VARCHAR(100) NOT NULL COMMENT '数据来源ID，如daily.close或system.MACD',
+    param_type ENUM('table', 'indicator') NOT NULL COMMENT '参数类型：table=查Tushare表，indicator=引用其他指标',
+    pre_period INT DEFAULT 0 COMMENT '向前取历史天数',
+    post_period INT DEFAULT 0 COMMENT '向后预测天数',
+    agg_func VARCHAR(50) DEFAULT NULL COMMENT '聚合函数，如SMA、EMA、MAX等',
+    PRIMARY KEY (creator_name, param_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='参数定义表';
+
+CREATE TABLE IndicatorParamRel (
+    indicator_creator_name VARCHAR(50) NOT NULL COMMENT '指标创建者用户名',
+    indicator_name VARCHAR(100) NOT NULL COMMENT '指标名称',
+    param_creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
+    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
+    PRIMARY KEY (indicator_creator_name, indicator_name, param_creator_name, param_id),
+    CONSTRAINT fk_rel_indicator FOREIGN KEY (indicator_creator_name, indicator_name) REFERENCES Indicator(creator_name, indicator_name),
+    CONSTRAINT fk_rel_param_indicator FOREIGN KEY (param_creator_name, param_id) REFERENCES Param(creator_name, param_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='指标与参数关系表';
+
+CREATE TABLE StrategyParamRel (
+    strategy_creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名',
+    strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称',
+    param_creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
+    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
+    PRIMARY KEY (strategy_creator_name, strategy_name, param_creator_name, param_id),
+    CONSTRAINT fk_rel_strategy FOREIGN KEY (strategy_creator_name, strategy_name) REFERENCES Strategy(creator_name, strategy_name),
+    CONSTRAINT fk_rel_param_strategy FOREIGN KEY (param_creator_name, param_id) REFERENCES Param(creator_name, param_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='策略与参数关系表';
 
 -- =============================================
 -- 5. 创建交易信号表
@@ -174,52 +189,47 @@ CREATE TABLE SystemLog (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
 
 -- =============================================
--- 8. 初始数据插入示例
+-- 8. 初始数据插入示例（按依赖顺序调整，去除冗余）
 -- =============================================
 
 -- 1. 插入管理员用户
 INSERT INTO User (user_id, user_name, user_password, user_role, user_status, user_create_time)
 VALUES ('1', 'system', '******', 'admin', 'active', '2025-09-01');
 
--- 2. 插入MACD指标
+-- 2. 插入参数表数据（所有参数，先插入参数实体）
+INSERT INTO Param (creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
+VALUES
+('system', 'daily_ema_12', 'daily.close', 'table', 12, 0, 'EMA'),
+('system', 'daily_ema_26', 'daily.close', 'table', 26, 0, 'EMA'),
+('system', 'total_mv', 'daily_basic.total_mv', 'table', 0, 0, NULL),
+('system', 'close', 'daily.close', 'table', 0, 0, NULL),
+('system', 'ema_5', 'daily.close', 'table', 5, 0, 'EMA'),
+('system', 'macd_ema_9', 'system.MACD', 'indicator', 9, 0, 'EMA'),
+('system', 'ema_60', 'daily.close', 'table', 60, 0, 'EMA');
+
+-- 3. 插入MACD指标
 INSERT INTO Indicator (creator_name, indicator_name, calculation_method, description, is_active)
 VALUES (
     'system',
     'MACD',
-    'def calculation_method(params):\n    return params.daily_ema_12 - params.daily_ema_26',
+    'def calculation_method(params):\n    return params["system.daily_ema_12"] - params["system.daily_ema_26"]',
     'MACD线=12日EMA-26日EMA',
     TRUE
 );
 
--- 3. 插入参数表数据（MACD指标参数）
-INSERT INTO Param (param_owner_type, owner_name, creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
-VALUES
-('indicator', 'MACD', 'system', 'daily_ema_12', 'daily.close', 'table', 12, 0, 'EMA'),
-('indicator', 'MACD', 'system', 'daily_ema_26', 'daily.close', 'table', 26, 0, 'EMA');
-
--- 4. 插入参数表数据（小市值策略、双均线策略、MACD策略、风控函数参数）
-INSERT INTO Param (param_owner_type, owner_name, creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
-VALUES
-('strategy', '小市值策略', 'system', 'total_mv', 'daily_basic.total_mv', 'table', 0, 0, NULL),
-('strategy', '双均线策略', 'system', 'close', 'daily.close', 'table', 0, 0, NULL),
-('strategy', '双均线策略', 'system', 'ema_5', 'daily.close', 'table', 5, 0, 'EMA'),
-('strategy', 'MACD策略', 'system', 'macd_ema_9', 'system.MACD', 'indicator', 9, 0, 'EMA'),
-('strategy', 'MACD策略', 'system', 'close', 'daily.close', 'table', 0, 0, NULL),
-('strategy', '风控函数', 'system', 'ema_60', 'daily.close', 'table', 60, 0, 'EMA'),
-('strategy', '风控函数', 'system', 'close', 'daily.close', 'table', 0, 0, NULL);
-
--- 5. 插入小市值策略
+-- 4. 插入策略（小市值策略、双均线策略、MACD策略）
 INSERT INTO Strategy (
     creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
     position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
-) VALUES (
+) VALUES
+(
     'system',
     '小市值策略',
     TRUE,
     'all',
     NULL,
-    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    filtered = [s for s in candidates if 2e9 <= indicators[s][\'total_mv\'] <= 3e9]\n    sorted_stocks = sorted(filtered, key=lambda s: indicators[s][\'total_mv\'])\n    return sorted_stocks[:position_count]',
-    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    filtered = [s for s in candidates if 2e9 <= indicators[s]["system.total_mv"] <= 3e9]\n    sorted_stocks = sorted(filtered, key=lambda s: indicators[s]["system.total_mv"])\n    return sorted_stocks[:position_count]',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock]["system.ema_60"] > indicators[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     3,
     5,
     0.0003,
@@ -227,20 +237,15 @@ INSERT INTO Strategy (
     '市值20-30亿，市值最小的3只',
     NOW(),
     NOW()
-);
-
--- 6. 插入双均线策略
-INSERT INTO Strategy (
-    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
-    position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
-) VALUES (
+),
+(
     'system',
     '双均线策略',
     TRUE,
     'single_stock',
     '000001.XSHE',
-    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    close = indicators[stock][\'close\']\n    ema_5 = indicators[stock][\'ema_5\']\n    if close > 1.01 * ema_5:\n        return [stock]\n    elif close < ema_5:\n        return []\n    return current_holdings',
-    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    close = indicators[stock]["system.close"]\n    ema_5 = indicators[stock]["system.ema_5"]\n    if close > 1.01 * ema_5:\n        return [stock]\n    elif close < ema_5:\n        return []\n    return current_holdings',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock]["system.ema_60"] > indicators[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     1,
     1,
     0.0003,
@@ -248,20 +253,15 @@ INSERT INTO Strategy (
     '5日均线上穿/下穿日线，择时买卖',
     NOW(),
     NOW()
-);
-
--- 7. 插入MACD策略
-INSERT INTO Strategy (
-    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
-    position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
-) VALUES (
+),
+(
     'system',
     'MACD策略',
     TRUE,
     'single_stock',
     '000001.XSHE',
-    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    macd_ema_9 = indicators[stock][\'macd_ema_9\']\n    close = indicators[stock][\'close\']\n    if macd_ema_9 < close:\n        return [stock]\n    elif macd_ema_9 > close:\n        return []\n    return current_holdings',
-    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    macd_ema_9 = indicators[stock]["system.macd_ema_9"]\n    close = indicators[stock]["system.close"]\n    if macd_ema_9 < close:\n        return [stock]\n    elif macd_ema_9 > close:\n        return []\n    return current_holdings',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock]["system.ema_60"] > indicators[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     1,
     1,
     0.0003,
@@ -269,3 +269,22 @@ INSERT INTO Strategy (
     '9日MACD线下穿日线买入，上穿卖出',
     NOW(),
     NOW()
+);
+
+-- 5. 插入指标与参数关系表（MACD指标参数）
+INSERT INTO IndicatorParamRel (indicator_creator_name, indicator_name, param_creator_name, param_id)
+VALUES
+('system', 'MACD', 'system', 'daily_ema_12'),
+('system', 'MACD', 'system', 'daily_ema_26');
+
+-- 6. 插入策略与参数关系表（小市值策略、双均线策略、MACD策略、风控函数参数）
+INSERT INTO StrategyParamRel (strategy_creator_name, strategy_name, param_creator_name, param_id)
+VALUES
+('system', '小市值策略', 'system', 'total_mv'),
+('system', '双均线策略', 'system', 'close'),
+('system', '双均线策略', 'system', 'ema_5'),
+('system', 'MACD策略', 'system', 'macd_ema_9'),
+('system', 'MACD策略', 'system', 'close'),
+('system', '小市值策略', 'system', 'ema_60'),
+('system', '双均线策略', 'system', 'ema_60'),
+('system', 'MACD策略', 'system', 'ema_60');
