@@ -172,3 +172,100 @@ CREATE TABLE SystemLog (
     INDEX idx_operation_time (operation_time),
     CONSTRAINT fk_log_operator FOREIGN KEY (operator_name) REFERENCES User(user_name) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
+
+-- =============================================
+-- 8. 初始数据插入示例
+-- =============================================
+
+-- 1. 插入管理员用户
+INSERT INTO User (user_id, user_name, user_password, user_role, user_status, user_create_time)
+VALUES ('1', 'system', '******', 'admin', 'active', '2025-09-01');
+
+-- 2. 插入MACD指标
+INSERT INTO Indicator (creator_name, indicator_name, calculation_method, description, is_active)
+VALUES (
+    'system',
+    'MACD',
+    'def calculation_method(params):\n    return params.daily_ema_12 - params.daily_ema_26',
+    'MACD线=12日EMA-26日EMA',
+    TRUE
+);
+
+-- 3. 插入参数表数据（MACD指标参数）
+INSERT INTO Param (param_owner_type, owner_name, creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
+VALUES
+('indicator', 'MACD', 'system', 'daily_ema_12', 'daily.close', 'table', 12, 0, 'EMA'),
+('indicator', 'MACD', 'system', 'daily_ema_26', 'daily.close', 'table', 26, 0, 'EMA');
+
+-- 4. 插入参数表数据（小市值策略、双均线策略、MACD策略、风控函数参数）
+INSERT INTO Param (param_owner_type, owner_name, creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
+VALUES
+('strategy', '小市值策略', 'system', 'total_mv', 'daily_basic.total_mv', 'table', 0, 0, NULL),
+('strategy', '双均线策略', 'system', 'close', 'daily.close', 'table', 0, 0, NULL),
+('strategy', '双均线策略', 'system', 'ema_5', 'daily.close', 'table', 5, 0, 'EMA'),
+('strategy', 'MACD策略', 'system', 'macd_ema_9', 'system.MACD', 'indicator', 9, 0, 'EMA'),
+('strategy', 'MACD策略', 'system', 'close', 'daily.close', 'table', 0, 0, NULL),
+('strategy', '风控函数', 'system', 'ema_60', 'daily.close', 'table', 60, 0, 'EMA'),
+('strategy', '风控函数', 'system', 'close', 'daily.close', 'table', 0, 0, NULL);
+
+-- 5. 插入小市值策略
+INSERT INTO Strategy (
+    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
+    position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
+) VALUES (
+    'system',
+    '小市值策略',
+    TRUE,
+    'all',
+    NULL,
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    filtered = [s for s in candidates if 2e9 <= indicators[s][\'total_mv\'] <= 3e9]\n    sorted_stocks = sorted(filtered, key=lambda s: indicators[s][\'total_mv\'])\n    return sorted_stocks[:position_count]',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    3,
+    5,
+    0.0003,
+    0.0013,
+    '市值20-30亿，市值最小的3只',
+    NOW(),
+    NOW()
+);
+
+-- 6. 插入双均线策略
+INSERT INTO Strategy (
+    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
+    position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
+) VALUES (
+    'system',
+    '双均线策略',
+    TRUE,
+    'single_stock',
+    '000001.XSHE',
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    close = indicators[stock][\'close\']\n    ema_5 = indicators[stock][\'ema_5\']\n    if close > 1.01 * ema_5:\n        return [stock]\n    elif close < ema_5:\n        return []\n    return current_holdings',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    1,
+    1,
+    0.0003,
+    0.0013,
+    '5日均线上穿/下穿日线，择时买卖',
+    NOW(),
+    NOW()
+);
+
+-- 7. 插入MACD策略
+INSERT INTO Strategy (
+    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
+    position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
+) VALUES (
+    'system',
+    'MACD策略',
+    TRUE,
+    'single_stock',
+    '000001.XSHE',
+    'def select_func(candidates, indicators, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    macd_ema_9 = indicators[stock][\'macd_ema_9\']\n    close = indicators[stock][\'close\']\n    if macd_ema_9 < close:\n        return [stock]\n    elif macd_ema_9 > close:\n        return []\n    return current_holdings',
+    'def risk_control_func(current_holdings, indicators, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if indicators[stock][\'ema_60\'] > indicators[stock][\'close\']:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
+    1,
+    1,
+    0.0003,
+    0.0013,
+    '9日MACD线下穿日线买入，上穿卖出',
+    NOW(),
+    NOW()
