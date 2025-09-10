@@ -13,113 +13,101 @@ USE quantitative_trading;
 -- 1. 创建用户表
 -- =============================================
 CREATE TABLE User (
-    user_id VARCHAR(50) NOT NULL,
-    user_account VARCHAR(50) NOT NULL,
-    user_password VARCHAR(255) NOT NULL,
-    user_role ENUM('admin', 'analyst', 'viewer') NOT NULL DEFAULT 'viewer',
-    user_status ENUM('active', 'inactive', 'locked') NOT NULL DEFAULT 'active',
-    user_email VARCHAR(100),
-    user_phone VARCHAR(20),
-    user_create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_last_login_time DATETIME,
-    
+    user_id VARCHAR(50) NOT NULL COMMENT '用户唯一ID',
+    user_name VARCHAR(50) NOT NULL COMMENT '用户名（唯一，仅允许英文、数字、下划线，不能与Tushare表名重复）',
+    user_password VARCHAR(255) NOT NULL COMMENT '用户密码（加密存储）',
+    user_role ENUM('admin', 'analyst') NOT NULL DEFAULT 'viewer' COMMENT '用户角色',
+    user_status ENUM('active', 'inactive', 'locked') NOT NULL DEFAULT 'active' COMMENT '用户状态',
+    user_email VARCHAR(100) COMMENT '邮箱',
+    user_phone VARCHAR(20) COMMENT '手机号',
+    user_create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    user_last_login_time DATETIME COMMENT '最后登录时间',
+
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_user_account (user_account),
+    UNIQUE KEY uk_user_name (user_name),
     INDEX idx_user_email (user_email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户信息表';
 
 -- =============================================
--- 2. 创建技术指标定义表
+-- 2. 创建指标表
 -- =============================================
-CREATE TABLE TechnicalIndicator (
-    indicator_id VARCHAR(50) NOT NULL,
-    indicator_name VARCHAR(100) NOT NULL,
-    indicator_type ENUM('technical', 'fundamental') NOT NULL,
-    calculation_method TEXT NOT NULL,
-    default_pre_period INT DEFAULT 0,
-    default_post_period INT DEFAULT 0,
-    description TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    
-    PRIMARY KEY (indicator_id),
-    INDEX idx_indicator_type (indicator_type),
+CREATE TABLE Indicator (
+    creator_name VARCHAR(50) NOT NULL COMMENT '指标创建者用户名，引用User.user_name',
+    indicator_name VARCHAR(100) NOT NULL COMMENT '指标名称',
+    calculation_method TEXT NOT NULL COMMENT '指标计算函数',
+    description TEXT COMMENT '指标说明',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    PRIMARY KEY (creator_name, indicator_name),
+    INDEX idx_creator_name (creator_name),
     INDEX idx_is_active (is_active),
-
-    CONSTRAINT chk_pre_period_non_negative CHECK (default_pre_period >= 0),
-    CONSTRAINT chk_post_period_non_negative CHECK (default_post_period >= 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技术指标定义表';
+    CONSTRAINT fk_indicator_creator FOREIGN KEY (creator_name) REFERENCES User(user_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技术/自定义指标定义表';
 
 -- =============================================
--- 3. 创建策略表
+-- 3. 创建参数表
+-- =============================================
+CREATE TABLE Param (
+    param_owner_type ENUM('indicator', 'strategy') NOT NULL COMMENT '参数归属类型：indicator=指标参数，strategy=策略参数',
+    owner_name VARCHAR(100) NOT NULL COMMENT '归属对象名（indicator_name或strategy_name）',
+    creator_name VARCHAR(50) NOT NULL COMMENT '归属对象创建者用户名',
+    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID（如daily_ema_12）',
+    data_id VARCHAR(100) NOT NULL COMMENT '数据来源ID，如daily.close或system.MACD',
+    param_type ENUM('table', 'indicator') NOT NULL COMMENT '参数类型：table=查Tushare表，indicator=引用其他指标',
+    pre_period INT DEFAULT 0 COMMENT '向前取历史天数',
+    post_period INT DEFAULT 0 COMMENT '向后预测天数',
+    agg_func VARCHAR(50) DEFAULT NULL COMMENT '聚合函数，如SMA、EMA、MAX等',
+    PRIMARY KEY (param_owner_type, creator_name, owner_name, param_id),
+    INDEX idx_owner (param_owner_type, creator_name, owner_name),
+    -- 可加外键约束到Indicator或Strategy（需用触发器或应用层保证）
+    -- CONSTRAINT fk_param_indicator FOREIGN KEY (creator_name, owner_name) REFERENCES Indicator(creator_name, indicator_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='参数定义表，支持指标和策略参数';
+
+-- =============================================
+-- 4. 创建策略表
 -- =============================================
 CREATE TABLE Strategy (
-    strategy_id VARCHAR(50) NOT NULL,
-    strategy_name VARCHAR(100) NOT NULL,
-    strategy_type ENUM('builtin', 'custom') NOT NULL,
-    creator_id VARCHAR(50) NOT NULL,
-    scope_type ENUM('all', 'single_stock', 'index') NOT NULL,
-    scope_id VARCHAR(50),
-    position_count INT,
-    rebalance_interval INT,
-    buy_fee_rate DECIMAL(8,6) NOT NULL DEFAULT 0.001,
-    sell_fee_rate DECIMAL(8,6) NOT NULL DEFAULT 0.001,
-    strategy_desc TEXT,
-    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用User.user_name',
+    strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称',
+    public BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否公开（管理员创建的为public，用户可选）',
+    scope_type ENUM('all', 'single_stock', 'index') NOT NULL COMMENT '策略生效范围类型',
+    scope_id VARCHAR(50) COMMENT '股票ID或指数ID（仅当scope_type为单只或指数时填写）',
+    select_func TEXT NOT NULL COMMENT '调仓选股函数，调仓日调用，返回目标持仓',
+    risk_control_func TEXT COMMENT '风险控制函数，每日调用，仅允许卖出，返回调整后持仓',
+    position_count INT COMMENT '持仓股票数量（仅全部/指数时有效）',
+    rebalance_interval INT COMMENT '调仓间隔（单位：交易日，仅全部/指数时有效）',
+    buy_fee_rate DECIMAL(8,6) NOT NULL DEFAULT 0.001 COMMENT '买入手续费率',
+    sell_fee_rate DECIMAL(8,6) NOT NULL DEFAULT 0.001 COMMENT '卖出手续费率',
+    strategy_desc TEXT COMMENT '策略描述',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    PRIMARY KEY (strategy_id),
-    INDEX idx_creator_id (creator_id),
-    INDEX idx_strategy_type (strategy_type),
+    PRIMARY KEY (creator_name, strategy_name),
+    INDEX idx_creator_name (creator_name),
     INDEX idx_scope_type (scope_type),
     INDEX idx_scope_id (scope_id),
-
-    CONSTRAINT fk_strategy_creator FOREIGN KEY (creator_id) REFERENCES User(user_id)
+    CONSTRAINT fk_strategy_creator FOREIGN KEY (creator_name) REFERENCES User(user_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='选股策略表';
-
--- =============================================
--- 4. 创建策略条件表
--- =============================================
-CREATE TABLE StrategyCondition (
-    condition_id VARCHAR(50) NOT NULL,
-    strategy_id VARCHAR(50) NOT NULL,
-    indicator_id VARCHAR(50) NOT NULL,
-    condition_type ENUM('greater', 'less', 'between', 'cross_up', 'cross_down') NOT NULL,
-    threshold_min VARCHAR(50),           -- 可为数值或指标ID
-    min_type ENUM('value', 'indicator'), -- 下界类型
-    threshold_max VARCHAR(50),           -- 可为数值或指标ID
-    max_type ENUM('value', 'indicator'), -- 上界类型
-    signal_action ENUM('buy', 'sell', 'risk_control') NOT NULL,
-    condition_order INT NOT NULL,
-
-    PRIMARY KEY (condition_id),
-    INDEX idx_strategy_order (strategy_id, condition_order),
-    INDEX idx_indicator_id (indicator_id),
-
-    CONSTRAINT fk_condition_strategy FOREIGN KEY (strategy_id) REFERENCES Strategy(strategy_id) ON DELETE CASCADE,
-    CONSTRAINT fk_condition_indicator FOREIGN KEY (indicator_id) REFERENCES TechnicalIndicator(indicator_id),
-    CONSTRAINT chk_condition_order CHECK (condition_order > 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='策略条件表，支持数值/指标混合阈值及风险控制信号';
 
 -- =============================================
 -- 5. 创建交易信号表
 -- =============================================
 CREATE TABLE TradingSignal (
-    signal_id VARCHAR(50) NOT NULL,
-    user_id VARCHAR(50) NOT NULL,
-    strategy_id VARCHAR(50) NOT NULL,
-    stock_code VARCHAR(20) NOT NULL,
-    trade_date DATE NOT NULL,
-    signal_type ENUM('buy', 'sell', 'risk_control') NOT NULL,
-    trigger_reason VARCHAR(500),
-    generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    signal_id VARCHAR(50) NOT NULL COMMENT '信号唯一ID',
+    user_name VARCHAR(50) NOT NULL COMMENT '生成信号的用户名，引用User.user_name',
+    creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用Strategy.creator_name',
+    strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称，引用Strategy.strategy_name',
+    stock_code VARCHAR(20) NOT NULL COMMENT '股票代码',
+    trade_date DATE NOT NULL COMMENT '信号生成日期',
+    signal_type ENUM('buy', 'sell', 'risk_control') NOT NULL COMMENT '信号类型',
+    trigger_reason VARCHAR(500) COMMENT '触发原因',
+    generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '信号生成时间',
 
     PRIMARY KEY (signal_id),
-    INDEX idx_user_generate_time (user_id, generate_time),
+    INDEX idx_user_generate_time (user_name, generate_time),
     INDEX idx_stock_trade_date (stock_code, trade_date),
-    INDEX idx_strategy_id (strategy_id),
-
-    CONSTRAINT fk_signal_user FOREIGN KEY (user_id) REFERENCES User(user_id),
-    CONSTRAINT fk_signal_strategy FOREIGN KEY (strategy_id) REFERENCES Strategy(strategy_id)
+    INDEX idx_strategy (creator_name, strategy_name),
+    CONSTRAINT fk_signal_user FOREIGN KEY (user_name) REFERENCES User(user_name),
+    CONSTRAINT fk_signal_strategy FOREIGN KEY (creator_name, strategy_name) REFERENCES Strategy(creator_name, strategy_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='交易信号表';
 
 -- =============================================
@@ -127,35 +115,35 @@ CREATE TABLE TradingSignal (
 -- =============================================
 -- 回测报告表 - 增强版，支持指数回测
 CREATE TABLE BacktestReport (
-    report_id VARCHAR(50) NOT NULL,
-    strategy_id VARCHAR(50) NOT NULL,
-    user_id VARCHAR(50) NOT NULL,
-    backtest_type ENUM('STOCK', 'INDEX') NOT NULL DEFAULT 'STOCK',
+    report_id VARCHAR(50) NOT NULL COMMENT '回测报告唯一ID',
+    creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用Strategy.creator_name',
+    strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称，引用Strategy.strategy_name',
+    user_name VARCHAR(50) NOT NULL COMMENT '回测发起用户',
+    backtest_type ENUM('STOCK', 'INDEX') NOT NULL DEFAULT 'STOCK' COMMENT '回测类型',
     stock_code VARCHAR(20) NOT NULL COMMENT '单股票代码或指数代码',
     component_count INT DEFAULT NULL COMMENT '指数成分股数量',
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    initial_fund DECIMAL(15,2) NOT NULL,
-    final_fund DECIMAL(15,2) NOT NULL,
-    total_return DECIMAL(8,4) NOT NULL,
-    annual_return DECIMAL(8,4) NOT NULL,
-    max_drawdown DECIMAL(8,4) NOT NULL,
-    sharpe_ratio DECIMAL(8,4),
-    win_rate DECIMAL(5,4),
-    profit_loss_ratio DECIMAL(8,4),
-    trade_count INT NOT NULL,
-    report_generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    report_status ENUM('generating', 'completed', 'failed') NOT NULL DEFAULT 'generating',
-    
+    start_date DATE NOT NULL COMMENT '回测起始日期',
+    end_date DATE NOT NULL COMMENT '回测结束日期',
+    initial_fund DECIMAL(15,2) NOT NULL COMMENT '初始资金',
+    final_fund DECIMAL(15,2) NOT NULL COMMENT '回测结束资金',
+    total_return DECIMAL(8,4) NOT NULL COMMENT '总收益率',
+    annual_return DECIMAL(8,4) NOT NULL COMMENT '年化收益率',
+    max_drawdown DECIMAL(8,4) NOT NULL COMMENT '最大回撤',
+    sharpe_ratio DECIMAL(8,4) COMMENT '夏普比率',
+    win_rate DECIMAL(5,4) COMMENT '胜率',
+    profit_loss_ratio DECIMAL(8,4) COMMENT '盈亏比',
+    trade_count INT NOT NULL COMMENT '交易次数',
+    report_generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '报告生成时间',
+    report_status ENUM('generating', 'completed', 'failed') NOT NULL DEFAULT 'generating' COMMENT '报告状态',
+
     PRIMARY KEY (report_id),
-    INDEX idx_strategy_generate_time (strategy_id, report_generate_time),
-    INDEX idx_user_id (user_id),
+    INDEX idx_strategy_generate_time (creator_name, strategy_name, report_generate_time),
+    INDEX idx_user_name (user_name),
     INDEX idx_stock_code (stock_code),
     INDEX idx_backtest_type (backtest_type),
-    
-    CONSTRAINT fk_report_strategy FOREIGN KEY (strategy_id) REFERENCES Strategy(strategy_id),
-    CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES User(user_id),
-    
+    CONSTRAINT fk_report_strategy FOREIGN KEY (creator_name, strategy_name) REFERENCES Strategy(creator_name, strategy_name),
+    CONSTRAINT fk_report_user FOREIGN KEY (user_name) REFERENCES User(user_name),
+
     CONSTRAINT chk_date_range CHECK (end_date >= start_date),
     CONSTRAINT chk_funds CHECK (initial_fund > 0 AND final_fund >= 0),
     CONSTRAINT chk_drawdown CHECK (max_drawdown >= 0),
@@ -169,19 +157,18 @@ CREATE TABLE BacktestReport (
 -- 7. 创建系统日志表
 -- =============================================
 CREATE TABLE SystemLog (
-    log_id VARCHAR(50) NOT NULL,
-    operator_id VARCHAR(50),
-    operator_role ENUM('admin', 'analyst', 'viewer', 'system'),
-    operation_type ENUM('login', 'strategy_create', 'backtest', 'signal_generate', 'data_sync') NOT NULL,
-    operation_content TEXT NOT NULL,
-    operation_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    operation_result ENUM('success', 'failed', 'warning') NOT NULL,
-    error_info TEXT,
-    
+    log_id VARCHAR(50) NOT NULL COMMENT '日志唯一ID',
+    operator_name VARCHAR(50) COMMENT '操作用户（可为空，系统操作时为空）',
+    operator_role ENUM('admin', 'analyst', 'system') COMMENT '操作用户角色或系统',
+    operation_type ENUM('login', 'strategy_create', 'backtest', 'signal_generate', 'data_sync') NOT NULL COMMENT '操作类型',
+    operation_content TEXT NOT NULL COMMENT '操作内容描述',
+    operation_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    operation_result ENUM('success', 'failed', 'warning') NOT NULL COMMENT '操作结果',
+    error_info TEXT COMMENT '错误信息',
+
     PRIMARY KEY (log_id),
-    INDEX idx_operator_time (operator_id, operation_time),
+    INDEX idx_operator_time (operator_name, operation_time),
     INDEX idx_operation_type (operation_type),
     INDEX idx_operation_time (operation_time),
-    
-    CONSTRAINT fk_log_operator FOREIGN KEY (operator_id) REFERENCES User(user_id) ON DELETE SET NULL
+    CONSTRAINT fk_log_operator FOREIGN KEY (operator_name) REFERENCES User(user_name) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
