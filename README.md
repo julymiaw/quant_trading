@@ -88,7 +88,21 @@ python connection_tester.py
 
 此工具会测试数据库连接和Tushare API，并生成API可用性报告，帮助您了解当前可用的数据接口。
 
-### 5. 准备回测数据
+### 5. 数据缓存初始化与单元测试
+
+在准备回测数据前，建议先运行自动化测试脚本，**该脚本会自动完成部分Tushare数据的本地缓存初始化，并对各类数据接口进行单元测试**：
+
+```bash
+python test_tushare_cache_client.py
+```
+
+- 首次运行会自动拉取部分行情数据并写入本地数据库，确保后续数据准备流程顺利。
+- 脚本会自动对 trade_cal、stock_basic、daily、daily_basic、index_basic、index_daily 等接口进行一致性校验。
+- 如果所有测试通过，说明本地缓存与Tushare官方数据一致，数据准备环境已就绪。
+
+---
+
+### 6. 准备回测数据
 
 请使用新的数据准备API脚本为策略准备回测数据：
 
