@@ -315,6 +315,15 @@ class DataPreparer:
         df = df[["ts_code", "trade_date", field]].copy()
         df.rename(columns={field: "value"}, inplace=True)
         df["trade_date"] = pd.to_datetime(df["trade_date"])
+        # 补全所有股票和所有目标交易日
+        trade_dates = self.trade_dates
+        start_idx = trade_dates.index(start_date.replace("-", ""))
+        end_idx = trade_dates.index(end_date.replace("-", ""))
+        target_dates = [pd.to_datetime(d) for d in trade_dates[start_idx : end_idx + 1]]
+        full_index = pd.MultiIndex.from_product(
+            [stock_list, target_dates], names=["ts_code", "trade_date"]
+        )
+        df = df.set_index(["ts_code", "trade_date"]).reindex(full_index)
         return df
 
     def calc_param(
@@ -556,7 +565,17 @@ def dag_info_to_jsonable(dag_info):
 
 # ========== 3. 主入口 ==========
 def main():
-    args = parse_args()
+    # ====== 临时代码：写死参数，便于调试 ======
+    class Args:
+        strategy = "system.小市值策略"
+        start = "2025-08-01"
+        end = "2025-08-31"
+        config = "config.json"
+        output = None
+
+    args = Args()
+    # ====== 生产环境请恢复为 args = parse_args() ======
+    # args = parse_args()
     # 生成输出目录和文件名
     strategy_dir = args.strategy.replace(".", "_")
     output_dir = args.output or os.path.join("data_prepared", strategy_dir)
