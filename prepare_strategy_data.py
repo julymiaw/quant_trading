@@ -6,6 +6,7 @@
 """
 
 import argparse
+import bisect
 import json
 import os
 import pandas as pd
@@ -67,20 +68,20 @@ class DataPreparer:
         """
         date_str = date.replace("-", "")
         trade_dates = self.trade_dates
-        date_dt = pd.to_datetime(date)
-        trade_dates_dt = [pd.to_datetime(d) for d in trade_dates]
         if date_str in trade_dates:
-            return pd.to_datetime(date_str).strftime("%Y-%m-%d")
+            return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
         if direction == "forward":
             # 找到第一个大于等于date的交易日
-            for d in trade_dates_dt:
-                if d >= date_dt:
-                    return d.strftime("%Y-%m-%d")
+            idx = bisect.bisect_left(trade_dates, date_str)
+            if idx < len(trade_dates):
+                d = trade_dates[idx]
+                return f"{d[:4]}-{d[4:6]}-{d[6:]}"
         else:
             # 找到最后一个小于等于date的交易日
-            for d in reversed(trade_dates_dt):
-                if d <= date_dt:
-                    return d.strftime("%Y-%m-%d")
+            idx = bisect.bisect_right(trade_dates, date_str) - 1
+            if idx >= 0:
+                d = trade_dates[idx]
+                return f"{d[:4]}-{d[4:6]}-{d[6:]}"
         raise ValueError(f"无法纠正为交易日: {date}")
 
     def get_strategy_info(self, creator_name: str, strategy_name: str) -> Dict:
@@ -469,18 +470,6 @@ class DataPreparer:
                 )
                 self.node_values[node] = df
 
-            # 输出调试信息
-            if not df.empty:
-                min_date = df.reset_index()["trade_date"].min()
-                max_date = df.reset_index()["trade_date"].max()
-                min_date = pd.to_datetime(min_date).strftime("%Y-%m-%d")
-                max_date = pd.to_datetime(max_date).strftime("%Y-%m-%d")
-            else:
-                min_date = max_date = None
-            print(
-                f"[节点计算完成] {tuple_to_str(node)}: 实际数据范围 {min_date} ~ {max_date}, 预期范围 {pd.to_datetime(ranges[node][0]).strftime('%Y-%m-%d')} ~ {pd.to_datetime(ranges[node][1]).strftime('%Y-%m-%d')}"
-            )
-
     def prepare_data(
         self, strategy_fullname: str, start_date: str, end_date: str
     ) -> Dict:
@@ -591,9 +580,6 @@ def main():
             ensure_ascii=False,
             indent=2,
         )
-    print(
-        f"数据准备完成，参数数据已保存到 {result['param_data_path']}，流程信息已保存到 {output_json}"
-    )
 
 
 if __name__ == "__main__":
