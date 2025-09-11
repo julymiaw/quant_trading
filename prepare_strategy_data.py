@@ -566,16 +566,16 @@ def dag_info_to_jsonable(dag_info):
 # ========== 3. 主入口 ==========
 def main():
     # ====== 临时代码：写死参数，便于调试 ======
-    class Args:
-        strategy = "system.小市值策略"
-        start = "2025-08-01"
-        end = "2025-08-31"
-        config = "config.json"
-        output = None
+    # class Args:
+    #     strategy = "system.小市值策略"
+    #     start = "2025-08-01"
+    #     end = "2025-08-31"
+    #     config = "config.json"
+    #     output = None
 
-    args = Args()
+    # args = Args()
     # ====== 生产环境请恢复为 args = parse_args() ======
-    # args = parse_args()
+    args = parse_args()
     # 生成输出目录和文件名
     strategy_dir = args.strategy.replace(".", "_")
     output_dir = args.output or os.path.join("data_prepared", strategy_dir)
