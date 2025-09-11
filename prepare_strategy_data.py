@@ -418,20 +418,22 @@ class DataPreparer:
         按照order顺序，依次计算所有节点的值，结果存储到self.node_values
         """
         self.node_values = {}
-        # 预先准备所有需要的日期列表
         for node in order:
             if node[0] == "table":
                 table_field = node[1]
                 start, end = ranges[node]
-                # 获取所有涉及的日期
-                date_list = (
-                    pd.date_range(start, end, freq="B").strftime("%Y-%m-%d").tolist()
-                )
+                # 用真实交易日
+                trade_dates = self.trade_dates
+                start_idx = trade_dates.index(start.replace("-", ""))
+                end_idx = trade_dates.index(end.replace("-", ""))
+                date_list = [
+                    pd.to_datetime(d).strftime("%Y-%m-%d")
+                    for d in trade_dates[start_idx : end_idx + 1]
+                ]
                 df = self.get_table_data(table_field, stock_list, start, end)
                 self.node_values[node] = df
             elif node[0] == "param":
                 param_info = self.param_cache[(node[1], node[2])]
-                # 找到data节点
                 data_node = None
                 if param_info["param_type"] == "indicator":
                     indicator_creator, indicator_name = param_info["data_id"].split(
@@ -440,14 +442,12 @@ class DataPreparer:
                     data_node = ("indicator", indicator_creator, indicator_name)
                 elif param_info["param_type"] == "table":
                     data_node = ("table", param_info["data_id"])
-                # 先确保data_node已算好
                 data_df = self.node_values[data_node]
                 param_range = ranges[node]
                 df = self.calc_param(param_info, data_df.reset_index(), param_range)
                 self.node_values[node] = df
             elif node[0] == "indicator":
                 indicator_info = self.indicator_cache[(node[1], node[2])]
-                # 找到所有参数节点
                 indicator_params = self.indicator_param_cache[(node[1], node[2])]
                 param_dict = {
                     ("param", p_creator, p_id): self.node_values[
@@ -456,13 +456,30 @@ class DataPreparer:
                     for p_creator, p_id in indicator_params
                 }
                 start, end = ranges[node]
-                date_list = (
-                    pd.date_range(start, end, freq="B").strftime("%Y-%m-%d").tolist()
-                )
+                # 用真实交易日
+                trade_dates = self.trade_dates
+                start_idx = trade_dates.index(start.replace("-", ""))
+                end_idx = trade_dates.index(end.replace("-", ""))
+                date_list = [
+                    pd.to_datetime(d).strftime("%Y-%m-%d")
+                    for d in trade_dates[start_idx : end_idx + 1]
+                ]
                 df = self.calc_indicator(
                     indicator_info, param_dict, stock_list, date_list
                 )
                 self.node_values[node] = df
+
+            # 输出调试信息
+            if not df.empty:
+                min_date = df.reset_index()["trade_date"].min()
+                max_date = df.reset_index()["trade_date"].max()
+                min_date = pd.to_datetime(min_date).strftime("%Y-%m-%d")
+                max_date = pd.to_datetime(max_date).strftime("%Y-%m-%d")
+            else:
+                min_date = max_date = None
+            print(
+                f"[节点计算完成] {tuple_to_str(node)}: 实际数据范围 {min_date} ~ {max_date}, 预期范围 {pd.to_datetime(ranges[node][0]).strftime('%Y-%m-%d')} ~ {pd.to_datetime(ranges[node][1]).strftime('%Y-%m-%d')}"
+            )
 
     def prepare_data(
         self, strategy_fullname: str, start_date: str, end_date: str
@@ -498,10 +515,24 @@ class DataPreparer:
             param_names.append(param_name)
         # 合并为大表
         if param_frames:
-            big_df = pd.concat(param_frames, axis=1, join="outer")
-            big_df = big_df.reset_index()  # ts_code, trade_date, param1, param2, ...
-            # 建议trade_date转为字符串
-            big_df["trade_date"] = big_df["trade_date"].dt.strftime("%Y-%m-%d")
+            # 构造目标区间的完整MultiIndex（用真实交易日）
+            trade_dates = self.trade_dates
+            start_idx = trade_dates.index(start_date_corr.replace("-", ""))
+            end_idx = trade_dates.index(end_date_corr.replace("-", ""))
+            target_dates = [
+                pd.to_datetime(d).strftime("%Y-%m-%d")
+                for d in trade_dates[start_idx : end_idx + 1]
+            ]
+            full_index = pd.MultiIndex.from_product(
+                [stock_list, target_dates], names=["ts_code", "trade_date"]
+            )
+            # 每个参数都reindex到full_index
+            param_frames_reindexed = []
+            for df in param_frames:
+                param_frames_reindexed.append(df.reindex(full_index))
+            big_df = pd.concat(param_frames_reindexed, axis=1)
+            big_df = big_df.reset_index()
+            big_df["trade_date"] = big_df["trade_date"].astype(str)
         else:
             big_df = pd.DataFrame()
 
@@ -520,6 +551,20 @@ class DataPreparer:
         }
 
 
+def tuple_to_str(t):
+    if isinstance(t, tuple):
+        return "|".join(str(x) for x in t)
+    return str(t)
+
+
+def dag_info_to_jsonable(dag_info):
+    # order: list of tuple -> list of str
+    order = [tuple_to_str(node) for node in dag_info["order"]]
+    # ranges: dict of tuple->tuple -> dict of str->tuple
+    ranges = {tuple_to_str(k): v for k, v in dag_info["ranges"].items()}
+    return {"order": order, "ranges": ranges}
+
+
 # ========== 3. 主入口 ==========
 def main():
     args = parse_args()
@@ -533,12 +578,12 @@ def main():
     preparer = DataPreparer(args.config)
     preparer.output_path = output_csv_prefix  # 用于csv/parquet等文件前缀
     result = preparer.prepare_data(args.strategy, args.start, args.end)
-    # 保存流程和参数信息到json
+    # 保存流程和参数信息到json，修正tuple为str
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "stock_list": result["stock_list"],
-                "dag_info": result["dag_info"],
+                "dag_info": dag_info_to_jsonable(result["dag_info"]),
                 "param_data_path": result["param_data_path"],
                 "param_columns": result["param_columns"],
             },

@@ -2,5 +2,5 @@ __pycache__
 .*
 config.json
 api_reports
-backtest_results
+data_prepared
 joinquant
