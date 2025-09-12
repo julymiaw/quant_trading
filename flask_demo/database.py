@@ -16,17 +16,20 @@ class DatabaseManager:
         初始化数据库连接管理器
         """
         self.config = self._load_config(config_path)
-        self.connection = None
+        self.quant_connection = None  # 量化交易系统数据库连接
+        self.tushare_connection = None  # Tushare缓存数据库连接
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def connect(self):
-        """建立数据库连接"""
-        if self.connection is None or not self._is_connection_alive():
-            self.connection = pymysql.connect(
+    def connect_quant_db(self):
+        """建立量化交易系统数据库连接"""
+        if self.quant_connection is None or not self._is_connection_alive(
+            self.quant_connection
+        ):
+            self.quant_connection = pymysql.connect(
                 host="localhost",
                 user="root",
                 password=self.config["db_password"],
@@ -35,24 +38,50 @@ class DatabaseManager:
                 autocommit=True,
             )
 
-    def _is_connection_alive(self) -> bool:
+    def connect_tushare_db(self):
+        """建立Tushare缓存数据库连接"""
+        if self.tushare_connection is None or not self._is_connection_alive(
+            self.tushare_connection
+        ):
+            self.tushare_connection = pymysql.connect(
+                host="localhost",
+                user="root",
+                password=self.config["db_password"],
+                database="tushare_cache",
+                charset="utf8mb4",
+                autocommit=True,
+            )
+
+    def _is_connection_alive(self, connection) -> bool:
         """检查连接是否有效"""
         try:
-            self.connection.ping(reconnect=False)
-            return True
+            if connection:
+                connection.ping(reconnect=False)
+                return True
+            return False
         except:
             return False
 
     def close(self):
         """关闭数据库连接"""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
+        if self.quant_connection:
+            self.quant_connection.close()
+            self.quant_connection = None
+        if self.tushare_connection:
+            self.tushare_connection.close()
+            self.tushare_connection = None
 
     def get_table_fields(self, table_name: str) -> List[str]:
         """获取指定表的所有字段名"""
-        self.connect()
-        cursor = self.connection.cursor()
+        # 判断表属于哪个数据库
+        if table_name in ["daily", "daily_basic"]:
+            self.connect_tushare_db()
+            connection = self.tushare_connection
+        else:
+            self.connect_quant_db()
+            connection = self.quant_connection
+
+        cursor = connection.cursor()
         try:
             # 查询表的字段信息
             cursor.execute(f"DESCRIBE {table_name}")
@@ -83,8 +112,8 @@ class DatabaseManager:
 
     def search_users(self, query: str = "") -> List[str]:
         """搜索用户名"""
-        self.connect()
-        cursor = self.connection.cursor()
+        self.connect_quant_db()
+        cursor = self.quant_connection.cursor()
         try:
             if query:
                 cursor.execute(
@@ -102,8 +131,8 @@ class DatabaseManager:
 
     def search_strategies(self, creator_name: str, query: str = "") -> List[str]:
         """搜索指定用户的策略"""
-        self.connect()
-        cursor = self.connection.cursor()
+        self.connect_quant_db()
+        cursor = self.quant_connection.cursor()
         try:
             if query:
                 cursor.execute(
@@ -124,8 +153,8 @@ class DatabaseManager:
 
     def search_params(self, creator_name: str, query: str = "") -> List[str]:
         """搜索指定用户的参数"""
-        self.connect()
-        cursor = self.connection.cursor()
+        self.connect_quant_db()
+        cursor = self.quant_connection.cursor()
         try:
             if query:
                 cursor.execute(
@@ -146,8 +175,8 @@ class DatabaseManager:
 
     def search_indicators(self, creator_name: str, query: str = "") -> List[str]:
         """搜索指定用户的指标"""
-        self.connect()
-        cursor = self.connection.cursor()
+        self.connect_quant_db()
+        cursor = self.quant_connection.cursor()
         try:
             if query:
                 cursor.execute(
