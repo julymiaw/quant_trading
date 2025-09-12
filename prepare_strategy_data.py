@@ -19,6 +19,15 @@ import numpy as np
 # 假设有如下数据库/缓存/接口工具
 from tushare_cache_client import TushareCacheClient
 
+# 回测模块必需的参数列表（由回测模块同学要求）
+# 这些参数必须出现在所有策略的准备数据中，以确保回测功能正常运行
+REQUIRED_PARAMS = [
+    ("system", "close"),  # 收盘价 - 基础价格数据
+    ("system", "high"),  # 最高价 - 日内高点数据
+    ("system", "low"),  # 最低价 - 日内低点数据
+    ("system", "open"),  # 开盘价 - 日内开盘数据
+]
+
 
 # ========== 1. 解析命令行参数 ==========
 def parse_args():
@@ -492,9 +501,10 @@ class DataPreparer:
         stock_list = self.get_stock_list(scope_type, scope_id)
         # 4. 获取策略参数
         strategy_params = self.get_strategy_params(creator_name, strategy_name)
-        # 检查是否包含 system.close，没有则补充
-        if ("system", "close") not in strategy_params:
-            strategy_params.append(("system", "close"))
+        # 检查并补充回测模块必需的参数
+        for required_param in REQUIRED_PARAMS:
+            if required_param not in strategy_params:
+                strategy_params.append(required_param)
         # 5. 纠正start_date和end_date为交易日
         start_date_corr = self.correct_to_trade_date(start_date, direction="forward")
         end_date_corr = self.correct_to_trade_date(end_date, direction="backward")

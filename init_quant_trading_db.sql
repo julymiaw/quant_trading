@@ -203,6 +203,9 @@ VALUES
 ('system', 'daily_ema_26', 'daily.close', 'table', 26, 0, 'EMA'),
 ('system', 'total_mv', 'daily_basic.total_mv', 'table', 0, 0, NULL),
 ('system', 'close', 'daily.close', 'table', 0, 0, NULL),
+('system', 'high', 'daily.high', 'table', 0, 0, NULL),
+('system', 'low', 'daily.low', 'table', 0, 0, NULL),
+('system', 'open', 'daily.open', 'table', 0, 0, NULL),
 ('system', 'ema_5', 'daily.close', 'table', 5, 0, 'EMA'),
 ('system', 'macd_ema_9', 'system.MACD', 'indicator', 9, 0, 'EMA'),
 ('system', 'ema_60', 'daily.close', 'table', 60, 0, 'EMA');
@@ -280,11 +283,24 @@ VALUES
 -- 6. 插入策略与参数关系表（小市值策略、双均线策略、MACD策略、风控函数参数）
 INSERT INTO StrategyParamRel (strategy_creator_name, strategy_name, param_creator_name, param_id)
 VALUES
+-- 小市值策略参数
 ('system', '小市值策略', 'system', 'total_mv'),
+('system', '小市值策略', 'system', 'close'),
+('system', '小市值策略', 'system', 'high'),
+('system', '小市值策略', 'system', 'low'),
+('system', '小市值策略', 'system', 'open'),
+('system', '小市值策略', 'system', 'ema_60'),
+-- 双均线策略参数
 ('system', '双均线策略', 'system', 'close'),
+('system', '双均线策略', 'system', 'high'),
+('system', '双均线策略', 'system', 'low'),
+('system', '双均线策略', 'system', 'open'),
 ('system', '双均线策略', 'system', 'ema_5'),
+('system', '双均线策略', 'system', 'ema_60'),
+-- MACD策略参数
 ('system', 'MACD策略', 'system', 'macd_ema_9'),
 ('system', 'MACD策略', 'system', 'close'),
-('system', '小市值策略', 'system', 'ema_60'),
-('system', '双均线策略', 'system', 'ema_60'),
+('system', 'MACD策略', 'system', 'high'),
+('system', 'MACD策略', 'system', 'low'),
+('system', 'MACD策略', 'system', 'open'),
 ('system', 'MACD策略', 'system', 'ema_60');
