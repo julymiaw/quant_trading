@@ -94,6 +94,25 @@
             display: none;
         }
 
+        /* 自定义滚动条样式 */
+        .suggestions::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .suggestions::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .suggestions::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .suggestions::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
         .suggestion-item {
             padding: 10px 12px;
             cursor: pointer;
@@ -173,7 +192,8 @@
             <div class="info-text">
                 1. 首先选择节点类型（策略、参数、指标、数据表）<br>
                 2. 在搜索框中开始输入，系统会自动提供智能建议<br>
-                3. 点击下拉框中的建议可以自动完成输入<br><br>
+                3. 点击下拉框中的建议可以自动完成输入<br>
+                4. 当建议项超过5个时，可以使用滚动条查看更多选项<br><br>
 
                 <strong>搜索规则：</strong><br>
                 • <strong>数据表</strong>：输入表名（daily, daily_basic），然后输入"."来搜索字段<br>
@@ -309,6 +329,25 @@
                 suggestionsContainer.appendChild(item);
             });
 
+            // 如果建议项超过5个，添加滚动提示
+            if (suggestions.length > 5) {
+                const scrollHint = document.createElement('div');
+                scrollHint.className = 'scroll-hint';
+                scrollHint.textContent = `共${suggestions.length}项，可滚动查看更多`;
+                scrollHint.style.cssText = `
+                    padding: 8px 12px;
+                    background-color: #f8f9fa;
+                    border-top: 1px solid #dee2e6;
+                    font-size: 12px;
+                    color: #6c757d;
+                    text-align: center;
+                    position: sticky;
+                    bottom: 0;
+                    cursor: default;
+                `;
+                suggestionsContainer.appendChild(scrollHint);
+            }
+
             suggestionsContainer.style.display = 'block';
         }
 
@@ -319,7 +358,7 @@
 
         // 键盘导航支持
         searchInput.addEventListener('keydown', function (event) {
-            const items = suggestionsContainer.querySelectorAll('.suggestion-item:not(.loading)');
+            const items = suggestionsContainer.querySelectorAll('.suggestion-item:not(.loading):not(.scroll-hint)');
 
             if (items.length === 0) return;
 

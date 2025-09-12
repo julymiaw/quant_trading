@@ -104,11 +104,11 @@ class DatabaseManager:
         """搜索字段建议"""
         fields = self.get_table_fields(table_name)
         if not query:
-            return fields[:5]  # 默认返回前5个
+            return fields  # 返回所有字段
         matching_fields = [
             field for field in fields if field.lower().startswith(query.lower())
         ]
-        return matching_fields[:5]  # 最多返回5个匹配的字段
+        return matching_fields  # 返回所有匹配的字段
 
     def search_users(self, query: str = "") -> List[str]:
         """搜索用户名"""
@@ -117,11 +117,11 @@ class DatabaseManager:
         try:
             if query:
                 cursor.execute(
-                    "SELECT user_name FROM User WHERE user_name LIKE %s LIMIT 5",
+                    "SELECT user_name FROM User WHERE user_name LIKE %s",
                     (f"{query}%",),
                 )
             else:
-                cursor.execute("SELECT user_name FROM User LIMIT 5")
+                cursor.execute("SELECT user_name FROM User")
             return [row[0] for row in cursor.fetchall()]
         except Exception as e:
             print(f"搜索用户失败: {e}")
@@ -136,12 +136,12 @@ class DatabaseManager:
         try:
             if query:
                 cursor.execute(
-                    "SELECT strategy_name FROM Strategy WHERE creator_name = %s AND strategy_name LIKE %s LIMIT 5",
+                    "SELECT strategy_name FROM Strategy WHERE creator_name = %s AND strategy_name LIKE %s",
                     (creator_name, f"{query}%"),
                 )
             else:
                 cursor.execute(
-                    "SELECT strategy_name FROM Strategy WHERE creator_name = %s LIMIT 5",
+                    "SELECT strategy_name FROM Strategy WHERE creator_name = %s",
                     (creator_name,),
                 )
             return [row[0] for row in cursor.fetchall()]
@@ -158,12 +158,12 @@ class DatabaseManager:
         try:
             if query:
                 cursor.execute(
-                    "SELECT param_id FROM Param WHERE creator_name = %s AND param_id LIKE %s LIMIT 5",
+                    "SELECT param_id FROM Param WHERE creator_name = %s AND param_id LIKE %s",
                     (creator_name, f"{query}%"),
                 )
             else:
                 cursor.execute(
-                    "SELECT param_id FROM Param WHERE creator_name = %s LIMIT 5",
+                    "SELECT param_id FROM Param WHERE creator_name = %s",
                     (creator_name,),
                 )
             return [row[0] for row in cursor.fetchall()]
@@ -180,12 +180,12 @@ class DatabaseManager:
         try:
             if query:
                 cursor.execute(
-                    "SELECT indicator_name FROM Indicator WHERE creator_name = %s AND indicator_name LIKE %s LIMIT 5",
+                    "SELECT indicator_name FROM Indicator WHERE creator_name = %s AND indicator_name LIKE %s",
                     (creator_name, f"{query}%"),
                 )
             else:
                 cursor.execute(
-                    "SELECT indicator_name FROM Indicator WHERE creator_name = %s LIMIT 5",
+                    "SELECT indicator_name FROM Indicator WHERE creator_name = %s",
                     (creator_name,),
                 )
             return [row[0] for row in cursor.fetchall()]
