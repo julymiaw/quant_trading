@@ -492,6 +492,9 @@ class DataPreparer:
         stock_list = self.get_stock_list(scope_type, scope_id)
         # 4. 获取策略参数
         strategy_params = self.get_strategy_params(creator_name, strategy_name)
+        # 检查是否包含 system.close，没有则补充
+        if ("system", "close") not in strategy_params:
+            strategy_params.append(("system", "close"))
         # 5. 纠正start_date和end_date为交易日
         start_date_corr = self.correct_to_trade_date(start_date, direction="forward")
         end_date_corr = self.correct_to_trade_date(end_date, direction="backward")
