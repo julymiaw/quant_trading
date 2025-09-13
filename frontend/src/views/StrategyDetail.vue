@@ -683,17 +683,81 @@ export default {
           return;
         }
 
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // await axios.post(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`, paramForm)
+        // 获取用户token
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          loading.value = false;
+          return;
+        }
 
-        // 添加参数到列表
-        strategyParams.value.push({ ...paramForm });
+        // 首先创建参数（如果还不存在）
+        const paramData = {
+          param_name: paramForm.param_name,
+          data_id: paramForm.data_id,
+          param_type: paramForm.param_type,
+          pre_period: Number(paramForm.pre_period) || 0,
+          post_period: Number(paramForm.post_period) || 0,
+          agg_func: paramForm.agg_func || null,
+        };
+
+        try {
+          // 尝试创建参数
+          await axios.post("http://localhost:5000/api/params", paramData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+        } catch (paramError) {
+          // 如果参数已存在，忽略错误，继续添加策略参数关系
+          if (!paramError.response || paramError.response.status !== 400) {
+            throw paramError;
+          }
+        }
+
+        // 获取当前用户信息
+        const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+        const currentUserName = userInfo?.user_name;
+
+        // 添加策略参数关系
+        const relationData = {
+          param_creator_name: currentUserName,
+          param_name: paramForm.param_name,
+        };
+
+        await axios.post(
+          `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`,
+          relationData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         ElMessage.success("参数添加成功");
         addParamDialogVisible.value = false;
+
+        // 重置表单
+        if (paramFormRef.value) {
+          paramFormRef.value.resetFields();
+        }
+
+        // 重新获取策略参数列表
+        await fetchStrategyParams();
       } catch (error) {
         console.error("添加参数失败:", error);
-        ElMessage.error("添加参数失败，请重试");
+        if (
+          error.response &&
+          error.response.data &&
+          error.response.data.message
+        ) {
+          ElMessage.error(error.response.data.message);
+        } else {
+          ElMessage.error("添加参数失败，请重试");
+        }
       } finally {
         loading.value = false;
       }
@@ -714,18 +778,39 @@ export default {
           try {
             loading.value = true;
 
-            // 这里使用模拟删除，实际开发中应替换为真实的API调用
-            // await axios.delete(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params/${param.param_name}`)
+            // 获取用户token
+            const token = localStorage.getItem("token");
+            if (!token) {
+              ElMessage.error("请先登录");
+              loading.value = false;
+              return;
+            }
 
-            // 从列表中删除参数
-            strategyParams.value = strategyParams.value.filter(
-              (p) => p.param_name !== param.param_name
+            // 调用真实的API删除策略参数关系
+            await axios.delete(
+              `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params/${param.creator_name}/${param.param_name}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
             );
 
             ElMessage.success("参数删除成功");
+
+            // 重新获取策略参数列表
+            await fetchStrategyParams();
           } catch (error) {
             console.error("删除参数失败:", error);
-            ElMessage.error("删除参数失败，请重试");
+            if (
+              error.response &&
+              error.response.data &&
+              error.response.data.message
+            ) {
+              ElMessage.error(error.response.data.message);
+            } else {
+              ElMessage.error("删除参数失败，请重试");
+            }
           } finally {
             loading.value = false;
           }
