@@ -38,6 +38,11 @@
           />
         </div>
         
+        <!-- 登录错误提示 -->
+        <div v-if="showAlert" style="margin: 10px 0; padding: 15px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; text-align: center;">
+          <p style="margin: 0; color: #856404;">{{ alertMessage }}</p>
+        </div>
+        
         <!-- 登录按钮 -->
         <el-button
           type="primary"
@@ -47,16 +52,6 @@
         >
           登录
         </el-button>
-        
-        <!-- 登录消息提示 -->
-        <el-alert
-          v-if="showAlert"
-          :message="alertMessage"
-          :type="alertType"
-          show-icon
-          :style="alertStyle"
-          @close="showAlert = false"
-        />
         
         <!-- 忘记密码链接 -->
         <div class="form-links">
@@ -94,7 +89,7 @@ export default {
     const router = useRouter()
     const loading = ref(false)
     const showAlert = ref(false)
-    const alertMessage = ref('')
+    const alertMessage = ref('测试错误信息') // 设置默认测试值，方便查看
     const alertType = ref('info')
     
     // 登录表单数据
@@ -122,8 +117,16 @@ export default {
     }
     
     const alertStyle = {
-      marginTop: '16px',
-      borderRadius: '4px'
+      marginBottom: '16px',
+      borderRadius: '4px',
+      width: '100%',
+      textAlign: 'center',
+      height: '60px',
+      lineHeight: '60px',
+      color: '#333', // 确保文字颜色可见
+      fontSize: '14px', // 设置字体大小
+      background: 'rgba(245, 108, 108, 0.1)', // 为error类型添加背景色
+      borderColor: '#ffccc7' // 为error类型添加边框颜色
     }
     
     // 处理登录
@@ -133,6 +136,12 @@ export default {
           showAlert.value = true
           alertMessage.value = '请输入手机号和密码'
           alertType.value = 'warning'
+          
+          // 设置3秒后自动隐藏提示信息
+          setTimeout(() => {
+            showAlert.value = false
+          }, 3000)
+          
           return
         }
         
@@ -155,8 +164,76 @@ export default {
       } catch (error) {
         console.error('登录失败:', error)
         showAlert.value = true
-        alertMessage.value = error.response?.data?.message || '登录失败，请检查手机号和密码'
+        
+        // 增强错误信息处理，根据不同的HTTP状态码显示不同的错误信息
+        let errorMsg = '登录失败，请稍后再试'
+        
+        // 详细记录错误结构，便于调试
+        console.log('完整错误对象:', error)
+        console.log('错误响应:', error.response)
+        
+        if (error.response) {
+          // 服务器返回了错误响应
+          console.log('错误状态码:', error.response.status)
+          console.log('错误数据:', error.response.data)
+          
+          // 根据状态码给出明确提示
+          if (error.response.status === 401) {
+            errorMsg = '用户名或密码错误'
+          } else if (error.response.status === 400) {
+            errorMsg = '请填写完整的登录信息'
+          } else if (error.response.status === 500) {
+            errorMsg = '服务器内部错误，请稍后再试'
+          }
+          
+          // 尝试从响应中获取更具体的错误信息
+          if (error.response.data) {
+            // 尝试不同的字段名获取错误信息
+            if (typeof error.response.data === 'string') {
+              errorMsg = error.response.data
+            } else if (error.response.data.message) {
+              errorMsg = error.response.data.message
+            } else if (error.response.data.error) {
+              errorMsg = error.response.data.error
+            } else if (error.response.data.msg) {
+              errorMsg = error.response.data.msg
+            } else {
+              // 尝试将整个data对象转为字符串
+              try {
+                errorMsg = JSON.stringify(error.response.data)
+              } catch (e) {
+                console.error('无法序列化错误数据:', e)
+              }
+            }
+          }
+        } else if (error.message) {
+          // 网络错误或其他错误
+          errorMsg = error.message
+        }
+        
+        // 确保错误消息不为空
+        if (!errorMsg || errorMsg.trim() === '') {
+          errorMsg = '登录失败，未知错误'
+        }
+        
+        alertMessage.value = errorMsg
         alertType.value = 'error'
+        
+        console.log('设置错误信息:', {showAlert: showAlert.value, alertMessage: alertMessage.value})
+        
+        // 设置3秒后自动隐藏错误信息
+        const timer = setTimeout(() => {
+          console.log('3秒后自动隐藏提示信息')
+          showAlert.value = false
+          console.log('设置showAlert为false后:', showAlert.value)
+        }, 3000)
+        
+        // 再次确认alertMessage的值
+        setTimeout(() => {
+          console.log('100ms后再次检查alertMessage:', alertMessage.value)
+        }, 100)
+        
+        console.log('创建的定时器ID:', timer)
       } finally {
         loading.value = false
       }
@@ -172,6 +249,11 @@ export default {
       showAlert.value = true
       alertMessage.value = '忘记密码功能即将上线'
       alertType.value = 'info'
+      
+      // 设置3秒后自动隐藏提示信息
+      setTimeout(() => {
+        showAlert.value = false
+      }, 3000)
     }
     
     return {
