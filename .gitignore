@@ -4,3 +4,4 @@ config.json
 api_reports
 data_prepared
 joinquant
+node_modules
