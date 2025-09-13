@@ -269,11 +269,14 @@ export default {
 .navbar-left {
   display: flex;
   align-items: center;
+  flex-shrink: 0; /* 防止左侧区域缩小 */
+  min-width: 320px; /* 确保有足够空间显示完整标题 */
 }
 
 .logo {
   height: 40px;
   margin-right: 15px;
+  flex-shrink: 0; /* logo不缩小 */
 }
 
 .app-title {
@@ -281,53 +284,29 @@ export default {
   font-weight: 600;
   color: #10b981;
   margin: 0;
+  white-space: nowrap; /* 防止文字换行 */
+  /* 移除省略设置，让文字完整显示 */
 }
 
 .navbar-center {
-  flex: 1;
+  flex: 1; /* 占据剩余空间 */
   display: flex;
   justify-content: center;
-  max-width: 600px;
-  margin: 0 20px;
+  min-width: 400px; /* 确保菜单有足够空间展开 */
+  margin: 0 15px; /* 适当边距 */
 }
 
 .nav-menu {
-  width: 100% !important;
   background-color: transparent !important;
-  min-width: 400px;
-}
-
-.nav-menu .el-menu-item {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  text-align: center !important;
-  min-width: 120px !important;
-  padding: 0 20px !important;
-}
-
-.nav-menu .el-menu-item span {
-  margin-left: 8px;
-}
-
-.nav-menu .el-menu-item .el-icon {
-  margin-right: 0;
-}
-
-/* 防止菜单自动折叠 */
-.nav-menu .el-sub-menu {
-  display: none !important;
-}
-
-/* 确保所有菜单项都显示 */
-.nav-menu .el-menu-item {
-  display: flex !important;
+  width: 100% !important; /* 让菜单占满容器宽度 */
 }
 
 .navbar-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0; /* 防止右侧区域缩小 */
+  min-width: 200px; /* 确保右侧按钮有足够空间 */
 }
 
 .main-content {
@@ -336,5 +315,107 @@ export default {
   background-color: #f5f5f5;
   overflow-y: auto;
   height: calc(100vh - 60px);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .navbar-left {
+    min-width: 300px;
+  }
+
+  .navbar-center {
+    min-width: 350px;
+  }
+
+  .navbar-right {
+    min-width: 180px;
+  }
+
+  .app-title {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .navbar {
+    padding: 0 15px;
+  }
+
+  .navbar-left {
+    min-width: 280px;
+  }
+
+  .navbar-center {
+    min-width: 300px;
+    margin: 0 10px;
+  }
+
+  .navbar-right {
+    min-width: 160px;
+    gap: 8px;
+  }
+
+  .app-title {
+    font-size: 15px;
+  }
+
+  .logo {
+    height: 35px;
+    margin-right: 12px;
+  }
+}
+
+@media (max-width: 850px) {
+  .navbar-left {
+    min-width: 250px;
+  }
+
+  .navbar-center {
+    min-width: 250px;
+    margin: 0 8px;
+  }
+
+  .navbar-right {
+    min-width: 140px;
+    gap: 5px;
+  }
+
+  .app-title {
+    font-size: 14px;
+  }
+
+  .logo {
+    height: 32px;
+    margin-right: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0 10px;
+  }
+
+  .navbar-left {
+    min-width: 220px;
+  }
+
+  .navbar-center {
+    min-width: 200px;
+    margin: 0 5px;
+  }
+
+  .navbar-right {
+    min-width: 120px;
+    gap: 3px;
+  }
+
+  .app-title {
+    font-size: 13px;
+  }
+
+  .logo {
+    height: 30px;
+    margin-right: 8px;
+  }
 }
 </style>
