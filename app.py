@@ -188,8 +188,15 @@ def login():
                     "user_id": user["user_id"],
                     "user_name": user["user_name"],
                     "user_role": user["user_role"],
+                    "user_status": user["user_status"],
                     "user_email": user.get("user_email"),
                     "user_phone": user.get("user_phone"),
+                    "user_create_time": (
+                        user["user_create_time"].isoformat()
+                        if user.get("user_create_time")
+                        else None
+                    ),
+                    "user_last_login_time": datetime.now().isoformat(),  # 当前登录时间
                 }
 
                 return jsonify(
@@ -276,14 +283,39 @@ def get_user_info(current_user):
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT user_id, user_name, user_role, user_email, user_phone, user_create_time, user_last_login_time FROM User WHERE user_id = %s"
+                sql = "SELECT user_id, user_name, user_role, user_status, user_email, user_phone, user_create_time, user_last_login_time FROM User WHERE user_id = %s"
                 cursor.execute(sql, (current_user["user_id"],))
                 user = cursor.fetchone()
 
                 if not user:
-                    return jsonify({"message": "用户不存在"}), 404
+                    return jsonify({"code": 404, "message": "用户不存在"}), 404
 
-                return jsonify({"data": user, "message": "获取用户信息成功"}), 200
+                # 格式化日期字段
+                user_data = {
+                    "user_id": user["user_id"],
+                    "user_name": user["user_name"],
+                    "user_role": user["user_role"],
+                    "user_status": user.get("user_status"),
+                    "user_email": user.get("user_email"),
+                    "user_phone": user.get("user_phone"),
+                    "user_create_time": (
+                        user["user_create_time"].isoformat()
+                        if user.get("user_create_time")
+                        else None
+                    ),
+                    "user_last_login_time": (
+                        user["user_last_login_time"].isoformat()
+                        if user.get("user_last_login_time")
+                        else None
+                    ),
+                }
+
+                return (
+                    jsonify(
+                        {"code": 200, "data": user_data, "message": "获取用户信息成功"}
+                    ),
+                    200,
+                )
         finally:
             connection.close()
     except Exception as e:

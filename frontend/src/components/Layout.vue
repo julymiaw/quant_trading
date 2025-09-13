@@ -71,7 +71,7 @@
           userInfo?.user_role === "admin" ? "管理员" : "分析师"
         }}</el-descriptions-item>
         <el-descriptions-item label="用户状态">{{
-          userInfo?.user_status
+          formatUserStatus(userInfo?.user_status)
         }}</el-descriptions-item>
         <el-descriptions-item label="邮箱" v-if="userInfo?.user_email">{{
           userInfo?.user_email
@@ -132,6 +132,21 @@ export default {
       return date.toLocaleString("zh-CN");
     };
 
+    // 格式化用户状态
+    const formatUserStatus = (status) => {
+      if (!status) return "未知";
+      switch (status) {
+        case "active":
+          return "正常";
+        case "inactive":
+          return "未激活";
+        case "locked":
+          return "已锁定";
+        default:
+          return status;
+      }
+    };
+
     // 返回上一页
     const goBack = () => {
       if (window.history.length > 1) {
@@ -142,7 +157,40 @@ export default {
     };
 
     // 显示用户信息
-    const showUserInfo = () => {
+    const showUserInfo = async () => {
+      try {
+        // 从后端获取最新的用户信息
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.error("未找到token");
+          return;
+        }
+
+        const response = await fetch("http://localhost:5000/user/info", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.code === 200) {
+            // 更新用户信息
+            userInfo.value = result.data;
+            // 同时更新localStorage中的用户信息
+            localStorage.setItem("userInfo", JSON.stringify(result.data));
+          } else {
+            console.error("获取用户信息失败:", result.message);
+          }
+        } else {
+          console.error("网络请求失败:", response.status);
+        }
+      } catch (error) {
+        console.error("获取用户信息出错:", error);
+      }
+
       userInfoDialogVisible.value = true;
     };
 
@@ -189,6 +237,7 @@ export default {
       userInfoDialogVisible,
       activeMenu,
       formatDate,
+      formatUserStatus,
       goBack,
       showUserInfo,
       handleUserInfoDialogClose,
