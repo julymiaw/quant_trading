@@ -8,16 +8,16 @@
 import pymysql
 import json
 import os
+import re
 import logging
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 from functools import wraps
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import jwt
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # 配置日志
 logging.basicConfig(
@@ -52,28 +52,18 @@ config = load_config()
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "your-secret-key-here"
 app.config["JWT_EXPIRATION_DELTA"] = timedelta(hours=24)
 
-# 数据库配置
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 3306,
-    "user": "root",
-    "password": config["db_password"],  # 从配置文件读取密码
-    "database": "quantitative_trading",
-    "charset": "utf8mb4",
-}
-
 
 # 数据库连接工具函数
 def get_db_connection():
     """获取数据库连接"""
     try:
         connection = pymysql.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG["port"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            database=DB_CONFIG["database"],
-            charset=DB_CONFIG["charset"],
+            host="localhost",
+            port=3306,
+            user="root",
+            password=config["db_password"],
+            database="quantitative_trading",
+            charset="utf8mb4",
             cursorclass=pymysql.cursors.DictCursor,
         )
         return connection
@@ -86,8 +76,8 @@ def get_db_connection():
 def generate_token(user_id, user_name, user_role):
     """生成JWT token"""
     payload = {
-        "exp": datetime.utcnow() + app.config["JWT_EXPIRATION_DELTA"],
-        "iat": datetime.utcnow(),
+        "exp": datetime.now(timezone.utc) + app.config["JWT_EXPIRATION_DELTA"],
+        "iat": datetime.now(timezone.utc),
         "sub": user_id,
         "user_name": user_name,
         "user_role": user_role,
@@ -116,11 +106,11 @@ def token_required(f):
 
         try:
             # 解码token
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
             current_user = {
-                'user_id': data['sub'],
-                'user_name': data['user_name'],
-                'user_role': data['user_role']
+                "user_id": data["sub"],
+                "user_name": data["user_name"],
+                "user_role": data["user_role"],
             }
         except jwt.ExpiredSignatureError:
             return jsonify({"message": "Token已过期"}), 401
@@ -201,15 +191,14 @@ def login():
                     "user_email": user.get("user_email"),
                     "user_phone": user.get("user_phone"),
                 }
-                
-                return jsonify({
-                    'code': 200,
-                    'data': {
-                        'token': token,
-                        'userInfo': user_info
-                    },
-                    'message': '登录成功'
-                })
+
+                return jsonify(
+                    {
+                        "code": 200,
+                        "data": {"token": token, "userInfo": user_info},
+                        "message": "登录成功",
+                    }
+                )
         finally:
             connection.close()
     except Exception as e:
@@ -233,8 +222,6 @@ def register():
             return jsonify({"message": "用户名、密码和邮箱为必填项"}), 400
 
         # 验证用户名格式（仅允许英文、数字、下划线）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_]+$", user_name):
             return jsonify({"message": "用户名仅允许英文、数字、下划线"}), 400
 
@@ -290,7 +277,7 @@ def get_user_info(current_user):
         try:
             with connection.cursor() as cursor:
                 sql = "SELECT user_id, user_name, user_role, user_email, user_phone, user_create_time, user_last_login_time FROM User WHERE user_id = %s"
-                cursor.execute(sql, (current_user['user_id'],))
+                cursor.execute(sql, (current_user["user_id"],))
                 user = cursor.fetchone()
 
                 if not user:
@@ -331,7 +318,7 @@ def get_params(current_user):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -493,8 +480,6 @@ def create_param(current_user):
             return jsonify({"message": "历史天数和预测天数不能为负数"}), 400
 
         # 验证参数ID格式（仅允许字母、数字、下划线和点号）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_.]+$", param_name):
             return jsonify({"message": "参数ID只能包含字母、数字、下划线和点号"}), 400
 
@@ -503,7 +488,7 @@ def create_param(current_user):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -569,7 +554,7 @@ def update_param(current_user, param_composite_id):
     try:
         # 解析复合ID (格式: creator_name.param_name)
         try:
-            parts = param_composite_id.split('.', 1)
+            parts = param_composite_id.split(".", 1)
             if len(parts) != 2:
                 return jsonify({"message": "无效的参数ID格式"}), 400
             creator_name, param_name = parts
@@ -622,8 +607,6 @@ def update_param(current_user, param_composite_id):
             return jsonify({"message": "历史天数和预测天数不能为负数"}), 400
 
         # 验证参数ID格式
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_.]+$", new_param_name):
             return jsonify({"message": "参数ID只能包含字母、数字、下划线和点号"}), 400
 
@@ -632,7 +615,7 @@ def update_param(current_user, param_composite_id):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -735,22 +718,21 @@ def update_param(current_user, param_composite_id):
 
                 # 返回更新后的参数信息
                 updated_param = {
-                    'id': f"{creator_name}.{new_param_name}",
-                    'creator_name': creator_name,
-                    'param_name': new_param_name,
-                    'data_id': data_id,
-                    'param_type': param_type,
-                    'pre_period': pre_period,
-                    'post_period': post_period,
-                    'agg_func': agg_func,
-                    'create_time': existing_param.get('create_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                    "id": f"{creator_name}.{new_param_name}",
+                    "creator_name": creator_name,
+                    "param_name": new_param_name,
+                    "data_id": data_id,
+                    "param_type": param_type,
+                    "pre_period": pre_period,
+                    "post_period": post_period,
+                    "agg_func": agg_func,
+                    "create_time": existing_param.get(
+                        "create_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ),
                 }
-                
-                return jsonify({
-                    'data': updated_param,
-                    'message': '参数更新成功'
-                }), 200
-                
+
+                return jsonify({"data": updated_param, "message": "参数更新成功"}), 200
+
         finally:
             connection.close()
 
@@ -767,7 +749,7 @@ def delete_param(current_user, param_composite_id):
     try:
         # 解析复合ID (格式: creator_name.param_name)
         try:
-            parts = param_composite_id.split('.', 1)
+            parts = param_composite_id.split(".", 1)
             if len(parts) != 2:
                 return jsonify({"message": "无效的参数ID格式"}), 400
             creator_name, param_name = parts
@@ -779,7 +761,7 @@ def delete_param(current_user, param_composite_id):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -863,96 +845,272 @@ def delete_param(current_user, param_composite_id):
         return jsonify({"message": f"删除参数失败: {str(e)}"}), 500
 
 
-# 获取数据源列表API（用于前端自动完成）
+# 智能搜索建议API（替代原来的数据源列表API）
+@app.route("/api/suggestions", methods=["POST"])
+@token_required
+def get_suggestions(current_user):
+    """
+    获取智能搜索建议
+    请求格式：
+    {
+        "node_type": "策略|参数|指标|数据表",
+        "input_text": "用户输入的文本"
+    }
+    """
+    try:
+        data = request.get_json()
+        node_type = data.get("node_type", "")
+        input_text = data.get("input_text", "")
+
+        suggestions = []
+
+        if node_type == "数据表":
+            suggestions = handle_table_suggestions(input_text)
+        elif node_type in ["策略", "参数", "指标"]:
+            suggestions = handle_entity_suggestions(node_type, input_text)
+
+        return jsonify({"success": True, "suggestions": suggestions})
+
+    except Exception as e:
+        logger.error(f"获取智能搜索建议过程中发生错误: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+def handle_table_suggestions(input_text: str) -> list:
+    """
+    处理数据表类型的建议
+    逻辑：
+    1. 如果没有点号，搜索表名（daily, daily_basic）
+    2. 如果有点号，点号前是表名，点号后搜索字段
+    """
+    if "." not in input_text:
+        # 搜索表名
+        tables = ["daily", "daily_basic"]
+        if not input_text:
+            return tables
+        return [table for table in tables if table.startswith(input_text.lower())]
+    else:
+        # 搜索字段
+        table_name, field_query = input_text.split(".", 1)
+        if table_name in ["daily", "daily_basic"]:
+            fields = get_table_fields(table_name)
+            if not field_query:
+                return [f"{table_name}.{field}" for field in fields]
+            matching_fields = [
+                field
+                for field in fields
+                if field.lower().startswith(field_query.lower())
+            ]
+            return [f"{table_name}.{field}" for field in matching_fields]
+        else:
+            return []
+
+
+def handle_entity_suggestions(node_type: str, input_text: str) -> list:
+    """
+    处理策略、参数、指标类型的建议
+    逻辑：
+    1. 如果没有点号，搜索用户名
+    2. 如果有点号，点号前是用户名，点号后搜索对应的实体
+    """
+    if "." not in input_text:
+        # 搜索用户名
+        return search_users(input_text)
+    else:
+        # 搜索具体实体
+        creator_name, entity_query = input_text.split(".", 1)
+
+        entities = []
+        if node_type == "策略":
+            entities = search_strategies(creator_name, entity_query)
+        elif node_type == "参数":
+            entities = search_params(creator_name, entity_query)
+        elif node_type == "指标":
+            entities = search_indicators(creator_name, entity_query)
+
+        # 返回完整的 creator.entity 格式
+        return [f"{creator_name}.{entity}" for entity in entities]
+
+
+def get_table_fields(table_name: str) -> list:
+    """获取指定表的所有字段名"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+
+        # 根据表名判断使用哪个数据库
+        if table_name in ["daily", "daily_basic"]:
+            # 这些表在tushare_cache数据库中，需要切换数据库连接
+            cursor.execute("USE tushare_cache")
+
+        # 查询表的字段信息
+        cursor.execute(f"DESCRIBE {table_name}")
+        fields = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return fields
+    except Exception as e:
+        logger.error(f"获取表字段失败: {e}")
+        return []
+
+
+def search_users(query: str = "") -> list:
+    """搜索用户名"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT DISTINCT user_name FROM users WHERE user_name LIKE %s ORDER BY user_name",
+                (f"{query}%",),
+            )
+        else:
+            cursor.execute("SELECT DISTINCT user_name FROM users ORDER BY user_name")
+
+        users = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return users
+    except Exception as e:
+        logger.error(f"搜索用户失败: {e}")
+        return []
+
+
+def search_strategies(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的策略"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT strategy_name FROM strategies WHERE creator_name = %s AND strategy_name LIKE %s ORDER BY strategy_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT strategy_name FROM strategies WHERE creator_name = %s ORDER BY strategy_name",
+                (creator_name,),
+            )
+
+        strategies = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return strategies
+    except Exception as e:
+        logger.error(f"搜索策略失败: {e}")
+        return []
+
+
+def search_params(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的参数"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT param_name FROM parameters WHERE creator_name = %s AND param_name LIKE %s ORDER BY param_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT param_name FROM parameters WHERE creator_name = %s ORDER BY param_name",
+                (creator_name,),
+            )
+
+        params = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return params
+    except Exception as e:
+        logger.error(f"搜索参数失败: {e}")
+        return []
+
+
+def search_indicators(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的指标"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT indicator_name FROM indicators WHERE creator_name = %s AND indicator_name LIKE %s ORDER BY indicator_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT indicator_name FROM indicators WHERE creator_name = %s ORDER BY indicator_name",
+                (creator_name,),
+            )
+
+        indicators = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return indicators
+    except Exception as e:
+        logger.error(f"搜索指标失败: {e}")
+        return []
+
+
+# 保留原来的数据源API作为兼容性支持
 @app.route("/api/data-sources", methods=["GET"])
 @token_required
 def get_data_sources(current_user):
-    """获取数据源列表接口"""
+    """获取数据源列表接口（兼容性支持）"""
     try:
-        # 模拟数据源列表，实际项目中可以从配置文件或数据库获取
-        data_sources = [
-            # 基础数据表
-            "daily.open",
-            "daily.close",
-            "daily.high",
-            "daily.low",
-            "daily.volume",
-            "daily.amount",
-            "daily.pct_change",
-            "daily_basic.total_mv",
-            "daily_basic.circ_mv",
-            "daily_basic.pe",
-            "daily_basic.pb",
-            "daily_basic.ps",
-            "daily_basic.pcf",
-            # 估值数据
-            "valuation.market_cap",
-            "valuation.pe_ratio",
-            "valuation.pb_ratio",
-            "valuation.ps_ratio",
-            "valuation.pcf_ratio",
-            # 技术指标
-            "indicator.MACD",
-            "indicator.KDJ",
-            "indicator.RSI",
-            "indicator.BOLL",
-            "indicator.MA",
-            "indicator.EMA",
-            "indicator.VOLMA",
-            "indicator.ATR",
-            "indicator.CCI",
-            # 系统指标（来自Indicator表）
-            "system.MACD",
-            "system.KDJ",
-            "system.RSI",
-        ]
-
         # 获取查询参数
-        query = request.args.get("q", "").strip().lower()
+        query = request.args.get("q", "").strip()
 
-        # 过滤数据源
-        if query:
-            filtered_sources = [
-                source for source in data_sources if query in source.lower()
-            ]
-        else:
-            filtered_sources = data_sources
+        # 使用新的智能搜索逻辑
+        suggestions = handle_table_suggestions(query)
 
-        return (
-            jsonify(
-                {
-                    "data": filtered_sources[:50],  # 限制返回数量
-                    "message": "获取数据源列表成功",
-                }
-            ),
-            200,
+        return jsonify(
+            {
+                "data": suggestions[:50],  # 限制返回数量
+                "message": "获取数据源列表成功",
+            }
         )
 
     except Exception as e:
         logger.error(f"获取数据源列表过程中发生错误: {str(e)}")
-        return jsonify({'message': f'获取数据源列表失败: {str(e)}'}), 500
+        return jsonify({"message": f"获取数据源列表失败: {str(e)}"}), 500
+
 
 # =============================================
 # 策略管理相关API
 # =============================================
 
+
 # 获取策略列表API
-@app.route('/api/strategies', methods=['GET'])
+@app.route("/api/strategies", methods=["GET"])
 @token_required
 def get_strategies(current_user):
     """获取策略列表接口"""
     try:
         # 获取查询参数
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 10))
-        search_keyword = request.args.get('search', '').strip()
-        strategy_type_filter = request.args.get('strategy_type', 'all')  # my, system, public, all
-        scope_type_filter = request.args.get('scope_type', 'all')  # all, single_stock, index
-        
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 10))
+        search_keyword = request.args.get("search", "").strip()
+        strategy_type_filter = request.args.get(
+            "strategy_type", "all"
+        )  # my, system, public, all
+        scope_type_filter = request.args.get(
+            "scope_type", "all"
+        )  # all, single_stock, index
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 构建基础查询SQL
             base_sql = """
             SELECT s.creator_name, s.strategy_name, s.public, s.scope_type, s.scope_id,
@@ -962,134 +1120,158 @@ def get_strategies(current_user):
             FROM Strategy s
             WHERE 1=1
             """
-            
+
             # 构建查询条件和参数
             conditions = []
             params = []
-            
+
             # 根据策略类型筛选
-            if strategy_type_filter == 'my':
+            if strategy_type_filter == "my":
                 conditions.append("s.creator_name = %s")
-                params.append(current_user['user_name'])
-            elif strategy_type_filter == 'system':
+                params.append(current_user["user_name"])
+            elif strategy_type_filter == "system":
                 conditions.append("s.creator_name = 'system'")
-            elif strategy_type_filter == 'public':
+            elif strategy_type_filter == "public":
                 conditions.append("s.public = TRUE")
-            
+
             # 根据搜索关键词筛选
             if search_keyword:
-                conditions.append("(s.strategy_name LIKE %s OR s.strategy_desc LIKE %s)")
-                keyword_pattern = f'%{search_keyword}%'
+                conditions.append(
+                    "(s.strategy_name LIKE %s OR s.strategy_desc LIKE %s)"
+                )
+                keyword_pattern = f"%{search_keyword}%"
                 params.extend([keyword_pattern, keyword_pattern])
-            
+
             # 根据生效范围筛选
-            if scope_type_filter != 'all':
+            if scope_type_filter != "all":
                 conditions.append("s.scope_type = %s")
                 params.append(scope_type_filter)
-            
+
             # 拼接条件
             if conditions:
                 base_sql += " AND " + " AND ".join(conditions)
-            
+
             # 添加排序
             base_sql += " ORDER BY s.update_time DESC"
-            
+
             # 执行查询获取总数
-            count_sql = f"SELECT COUNT(*) as total FROM ({base_sql}) as counted_strategies"
+            count_sql = (
+                f"SELECT COUNT(*) as total FROM ({base_sql}) as counted_strategies"
+            )
             cursor.execute(count_sql, params)
-            total = cursor.fetchone()['total']
-            
+            total = cursor.fetchone()["total"]
+
             # 添加分页
             base_sql += " LIMIT %s OFFSET %s"
             offset = (page - 1) * page_size
             params.extend([page_size, offset])
-            
+
             # 执行分页查询
             cursor.execute(base_sql, params)
             strategies = cursor.fetchall()
-            
+
             # 格式化时间字段
             for strategy in strategies:
-                if strategy['create_time']:
-                    strategy['create_time'] = strategy['create_time'].strftime('%Y-%m-%d %H:%M:%S')
-                if strategy['update_time']:
-                    strategy['update_time'] = strategy['update_time'].strftime('%Y-%m-%d %H:%M:%S')
-            
-            return jsonify({
-                'code': 200,
-                'message': '获取策略列表成功',
-                'data': {
-                    'strategies': strategies,
-                    'total': total,
-                    'page': page,
-                    'page_size': page_size
+                if strategy["create_time"]:
+                    strategy["create_time"] = strategy["create_time"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                if strategy["update_time"]:
+                    strategy["update_time"] = strategy["update_time"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+
+            return jsonify(
+                {
+                    "code": 200,
+                    "message": "获取策略列表成功",
+                    "data": {
+                        "strategies": strategies,
+                        "total": total,
+                        "page": page,
+                        "page_size": page_size,
+                    },
                 }
-            })
-                
+            )
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"获取策略列表过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '获取策略列表失败，请重试'})
+        return jsonify({"code": 500, "message": "获取策略列表失败，请重试"})
+
 
 # 创建策略API
-@app.route('/api/strategies', methods=['POST'])
+@app.route("/api/strategies", methods=["POST"])
 @token_required
 def create_strategy(current_user):
     """创建策略接口"""
     try:
         data = request.get_json()
-        
+
         # 验证必填字段
-        required_fields = ['strategy_name', 'scope_type', 'select_func']
+        required_fields = ["strategy_name", "scope_type", "select_func"]
         for field in required_fields:
             if field not in data or not data[field]:
-                return jsonify({'code': 400, 'message': f'缺少必填字段: {field}'})
-        
-        strategy_name = str(data['strategy_name']).strip()
-        public = bool(data.get('public', True))
-        scope_type = data['scope_type']
-        scope_id = str(data.get('scope_id', '')).strip() if data.get('scope_id') else None
-        select_func = str(data['select_func']).strip()
-        risk_control_func = str(data.get('risk_control_func', '')).strip() if data.get('risk_control_func') else None
-        position_count = data.get('position_count')
-        rebalance_interval = data.get('rebalance_interval')
-        buy_fee_rate = float(data.get('buy_fee_rate', 0.001))
-        sell_fee_rate = float(data.get('sell_fee_rate', 0.001))
-        strategy_desc = str(data.get('strategy_desc', '')).strip() if data.get('strategy_desc') else None
-        
+                return jsonify({"code": 400, "message": f"缺少必填字段: {field}"})
+
+        strategy_name = str(data["strategy_name"]).strip()
+        public = bool(data.get("public", True))
+        scope_type = data["scope_type"]
+        scope_id = (
+            str(data.get("scope_id", "")).strip() if data.get("scope_id") else None
+        )
+        select_func = str(data["select_func"]).strip()
+        risk_control_func = (
+            str(data.get("risk_control_func", "")).strip()
+            if data.get("risk_control_func")
+            else None
+        )
+        position_count = data.get("position_count")
+        rebalance_interval = data.get("rebalance_interval")
+        buy_fee_rate = float(data.get("buy_fee_rate", 0.001))
+        sell_fee_rate = float(data.get("sell_fee_rate", 0.001))
+        strategy_desc = (
+            str(data.get("strategy_desc", "")).strip()
+            if data.get("strategy_desc")
+            else None
+        )
+
         # 验证数据格式
         if not strategy_name:
-            return jsonify({'code': 400, 'message': '策略名称不能为空'})
-        
-        if scope_type not in ['all', 'single_stock', 'index']:
-            return jsonify({'code': 400, 'message': '生效范围类型无效'})
-        
-        if scope_type != 'all' and not scope_id:
-            return jsonify({'code': 400, 'message': '当生效范围不是全部时，必须指定股票/指数ID'})
-        
-        if scope_type != 'single_stock':
+            return jsonify({"code": 400, "message": "策略名称不能为空"})
+
+        if scope_type not in ["all", "single_stock", "index"]:
+            return jsonify({"code": 400, "message": "生效范围类型无效"})
+
+        if scope_type != "all" and not scope_id:
+            return jsonify(
+                {"code": 400, "message": "当生效范围不是全部时，必须指定股票/指数ID"}
+            )
+
+        if scope_type != "single_stock":
             if not position_count or position_count <= 0:
-                return jsonify({'code': 400, 'message': '持仓数量必须大于0'})
+                return jsonify({"code": 400, "message": "持仓数量必须大于0"})
             if not rebalance_interval or rebalance_interval <= 0:
-                return jsonify({'code': 400, 'message': '调仓间隔必须大于0'})
-        
+                return jsonify({"code": 400, "message": "调仓间隔必须大于0"})
+
         # 验证策略名格式（仅允许中文、英文、数字、下划线）
-        import re
-        if not re.match(r'^[\u4e00-\u9fa5a-zA-Z0-9_]+$', strategy_name):
-            return jsonify({'code': 400, 'message': '策略名称只能包含中文、英文、数字和下划线'})
-        
+        if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", strategy_name):
+            return jsonify(
+                {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
+            )
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 检查策略名是否已存在（同一创建者）
             check_sql = "SELECT COUNT(*) as count FROM Strategy WHERE creator_name = %s AND strategy_name = %s"
-            cursor.execute(check_sql, (current_user['user_name'], strategy_name))
-            if cursor.fetchone()['count'] > 0:
-                return jsonify({'code': 400, 'message': '策略名称已存在'})
-            
+            cursor.execute(check_sql, (current_user["user_name"], strategy_name))
+            if cursor.fetchone()["count"] > 0:
+                return jsonify({"code": 400, "message": "策略名称已存在"})
+
             # 插入策略记录
             insert_sql = """
             INSERT INTO Strategy 
@@ -1098,33 +1280,48 @@ def create_strategy(current_user):
              sell_fee_rate, strategy_desc, create_time, update_time)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             """
-            
-            cursor.execute(insert_sql, (
-                current_user['user_name'], strategy_name, public, scope_type, scope_id,
-                select_func, risk_control_func, position_count, rebalance_interval,
-                buy_fee_rate, sell_fee_rate, strategy_desc
-            ))
-            
+
+            cursor.execute(
+                insert_sql,
+                (
+                    current_user["user_name"],
+                    strategy_name,
+                    public,
+                    scope_type,
+                    scope_id,
+                    select_func,
+                    risk_control_func,
+                    position_count,
+                    rebalance_interval,
+                    buy_fee_rate,
+                    sell_fee_rate,
+                    strategy_desc,
+                ),
+            )
+
             connection.commit()
-            
-            return jsonify({
-                'code': 200,
-                'message': '策略创建成功',
-                'data': {
-                    'creator_name': current_user['user_name'],
-                    'strategy_name': strategy_name
+
+            return jsonify(
+                {
+                    "code": 200,
+                    "message": "策略创建成功",
+                    "data": {
+                        "creator_name": current_user["user_name"],
+                        "strategy_name": strategy_name,
+                    },
                 }
-            })
-                
+            )
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"创建策略过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '创建策略失败，请重试'})
+        return jsonify({"code": 500, "message": "创建策略失败，请重试"})
+
 
 # 获取策略详情API
-@app.route('/api/strategies/<creator_name>/<strategy_name>', methods=['GET'])
+@app.route("/api/strategies/<creator_name>/<strategy_name>", methods=["GET"])
 @token_required
 def get_strategy_detail(current_user, creator_name, strategy_name):
     """获取策略详情接口"""
@@ -1132,7 +1329,7 @@ def get_strategy_detail(current_user, creator_name, strategy_name):
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 查询策略详情
             select_sql = """
             SELECT s.creator_name, s.strategy_name, s.public, s.scope_type, s.scope_id,
@@ -1142,104 +1339,123 @@ def get_strategy_detail(current_user, creator_name, strategy_name):
             FROM Strategy s
             WHERE s.creator_name = %s AND s.strategy_name = %s
             """
-            
+
             cursor.execute(select_sql, (creator_name, strategy_name))
             strategy = cursor.fetchone()
-            
+
             if not strategy:
-                return jsonify({'code': 404, 'message': '策略不存在'})
-            
+                return jsonify({"code": 404, "message": "策略不存在"})
+
             # 检查访问权限（如果不是公开策略且不是创建者，则不能访问）
-            if not strategy['public'] and strategy['creator_name'] != current_user['user_name']:
-                return jsonify({'code': 403, 'message': '无权限访问此策略'})
-            
+            if (
+                not strategy["public"]
+                and strategy["creator_name"] != current_user["user_name"]
+            ):
+                return jsonify({"code": 403, "message": "无权限访问此策略"})
+
             # 格式化时间字段
-            if strategy['create_time']:
-                strategy['create_time'] = strategy['create_time'].strftime('%Y-%m-%d %H:%M:%S')
-            if strategy['update_time']:
-                strategy['update_time'] = strategy['update_time'].strftime('%Y-%m-%d %H:%M:%S')
-            
-            return jsonify({
-                'code': 200,
-                'message': '获取策略详情成功',
-                'data': strategy
-            })
-                
+            if strategy["create_time"]:
+                strategy["create_time"] = strategy["create_time"].strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            if strategy["update_time"]:
+                strategy["update_time"] = strategy["update_time"].strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            return jsonify(
+                {"code": 200, "message": "获取策略详情成功", "data": strategy}
+            )
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"获取策略详情过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '获取策略详情失败，请重试'})
+        return jsonify({"code": 500, "message": "获取策略详情失败，请重试"})
+
 
 # 更新策略API
-@app.route('/api/strategies/<creator_name>/<strategy_name>', methods=['PUT'])
+@app.route("/api/strategies/<creator_name>/<strategy_name>", methods=["PUT"])
 @token_required
 def update_strategy(current_user, creator_name, strategy_name):
     """更新策略接口"""
     try:
         # 权限检查：只能更新自己创建的策略
-        if creator_name != current_user['user_name']:
-            return jsonify({'code': 403, 'message': '无权限修改此策略'})
-        
+        if creator_name != current_user["user_name"]:
+            return jsonify({"code": 403, "message": "无权限修改此策略"})
+
         data = request.get_json()
-        
+
         # 验证必填字段
-        required_fields = ['strategy_name', 'scope_type', 'select_func']
+        required_fields = ["strategy_name", "scope_type", "select_func"]
         for field in required_fields:
             if field not in data or not data[field]:
-                return jsonify({'code': 400, 'message': f'缺少必填字段: {field}'})
-        
-        new_strategy_name = str(data['strategy_name']).strip()
-        public = bool(data.get('public', True))
-        scope_type = data['scope_type']
-        scope_id = str(data.get('scope_id', '')).strip() if data.get('scope_id') else None
-        select_func = str(data['select_func']).strip()
-        risk_control_func = str(data.get('risk_control_func', '')).strip() if data.get('risk_control_func') else None
-        position_count = data.get('position_count')
-        rebalance_interval = data.get('rebalance_interval')
-        buy_fee_rate = float(data.get('buy_fee_rate', 0.001))
-        sell_fee_rate = float(data.get('sell_fee_rate', 0.001))
-        strategy_desc = str(data.get('strategy_desc', '')).strip() if data.get('strategy_desc') else None
-        
+                return jsonify({"code": 400, "message": f"缺少必填字段: {field}"})
+
+        new_strategy_name = str(data["strategy_name"]).strip()
+        public = bool(data.get("public", True))
+        scope_type = data["scope_type"]
+        scope_id = (
+            str(data.get("scope_id", "")).strip() if data.get("scope_id") else None
+        )
+        select_func = str(data["select_func"]).strip()
+        risk_control_func = (
+            str(data.get("risk_control_func", "")).strip()
+            if data.get("risk_control_func")
+            else None
+        )
+        position_count = data.get("position_count")
+        rebalance_interval = data.get("rebalance_interval")
+        buy_fee_rate = float(data.get("buy_fee_rate", 0.001))
+        sell_fee_rate = float(data.get("sell_fee_rate", 0.001))
+        strategy_desc = (
+            str(data.get("strategy_desc", "")).strip()
+            if data.get("strategy_desc")
+            else None
+        )
+
         # 验证数据格式
         if not new_strategy_name:
-            return jsonify({'code': 400, 'message': '策略名称不能为空'})
-        
-        if scope_type not in ['all', 'single_stock', 'index']:
-            return jsonify({'code': 400, 'message': '生效范围类型无效'})
-        
-        if scope_type != 'all' and not scope_id:
-            return jsonify({'code': 400, 'message': '当生效范围不是全部时，必须指定股票/指数ID'})
-        
-        if scope_type != 'single_stock':
+            return jsonify({"code": 400, "message": "策略名称不能为空"})
+
+        if scope_type not in ["all", "single_stock", "index"]:
+            return jsonify({"code": 400, "message": "生效范围类型无效"})
+
+        if scope_type != "all" and not scope_id:
+            return jsonify(
+                {"code": 400, "message": "当生效范围不是全部时，必须指定股票/指数ID"}
+            )
+
+        if scope_type != "single_stock":
             if not position_count or position_count <= 0:
-                return jsonify({'code': 400, 'message': '持仓数量必须大于0'})
+                return jsonify({"code": 400, "message": "持仓数量必须大于0"})
             if not rebalance_interval or rebalance_interval <= 0:
-                return jsonify({'code': 400, 'message': '调仓间隔必须大于0'})
-        
+                return jsonify({"code": 400, "message": "调仓间隔必须大于0"})
+
         # 验证策略名格式
-        import re
-        if not re.match(r'^[\u4e00-\u9fa5a-zA-Z0-9_]+$', new_strategy_name):
-            return jsonify({'code': 400, 'message': '策略名称只能包含中文、英文、数字和下划线'})
-        
+        if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", new_strategy_name):
+            return jsonify(
+                {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
+            )
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 检查策略是否存在
             check_sql = "SELECT COUNT(*) as count FROM Strategy WHERE creator_name = %s AND strategy_name = %s"
             cursor.execute(check_sql, (creator_name, strategy_name))
-            if cursor.fetchone()['count'] == 0:
-                return jsonify({'code': 404, 'message': '策略不存在'})
-            
+            if cursor.fetchone()["count"] == 0:
+                return jsonify({"code": 404, "message": "策略不存在"})
+
             # 如果策略名发生变化，检查新名称是否已存在
             if new_strategy_name != strategy_name:
                 check_new_name_sql = "SELECT COUNT(*) as count FROM Strategy WHERE creator_name = %s AND strategy_name = %s"
                 cursor.execute(check_new_name_sql, (creator_name, new_strategy_name))
-                if cursor.fetchone()['count'] > 0:
-                    return jsonify({'code': 400, 'message': '新策略名称已存在'})
-            
+                if cursor.fetchone()["count"] > 0:
+                    return jsonify({"code": 400, "message": "新策略名称已存在"})
+
             # 更新策略记录
             update_sql = """
             UPDATE Strategy 
@@ -1249,13 +1465,26 @@ def update_strategy(current_user, creator_name, strategy_name):
                 strategy_desc = %s, update_time = NOW()
             WHERE creator_name = %s AND strategy_name = %s
             """
-            
-            cursor.execute(update_sql, (
-                new_strategy_name, public, scope_type, scope_id, select_func, 
-                risk_control_func, position_count, rebalance_interval, buy_fee_rate, 
-                sell_fee_rate, strategy_desc, creator_name, strategy_name
-            ))
-            
+
+            cursor.execute(
+                update_sql,
+                (
+                    new_strategy_name,
+                    public,
+                    scope_type,
+                    scope_id,
+                    select_func,
+                    risk_control_func,
+                    position_count,
+                    rebalance_interval,
+                    buy_fee_rate,
+                    sell_fee_rate,
+                    strategy_desc,
+                    creator_name,
+                    strategy_name,
+                ),
+            )
+
             # 如果策略名发生变化，需要更新相关的关联表
             if new_strategy_name != strategy_name:
                 # 更新策略参数关系表
@@ -1264,99 +1493,119 @@ def update_strategy(current_user, creator_name, strategy_name):
                 SET strategy_name = %s 
                 WHERE strategy_creator_name = %s AND strategy_name = %s
                 """
-                cursor.execute(update_strategy_rel_sql, (new_strategy_name, creator_name, strategy_name))
-                
+                cursor.execute(
+                    update_strategy_rel_sql,
+                    (new_strategy_name, creator_name, strategy_name),
+                )
+
                 # 更新交易信号表
                 update_signal_sql = """
                 UPDATE TradingSignal 
                 SET strategy_name = %s 
                 WHERE creator_name = %s AND strategy_name = %s
                 """
-                cursor.execute(update_signal_sql, (new_strategy_name, creator_name, strategy_name))
-                
+                cursor.execute(
+                    update_signal_sql, (new_strategy_name, creator_name, strategy_name)
+                )
+
                 # 更新回测报告表
                 update_backtest_sql = """
                 UPDATE BacktestReport 
                 SET strategy_name = %s 
                 WHERE creator_name = %s AND strategy_name = %s
                 """
-                cursor.execute(update_backtest_sql, (new_strategy_name, creator_name, strategy_name))
-            
+                cursor.execute(
+                    update_backtest_sql,
+                    (new_strategy_name, creator_name, strategy_name),
+                )
+
             connection.commit()
-            
-            return jsonify({
-                'code': 200,
-                'message': '策略更新成功',
-                'data': {
-                    'creator_name': creator_name,
-                    'strategy_name': new_strategy_name
+
+            return jsonify(
+                {
+                    "code": 200,
+                    "message": "策略更新成功",
+                    "data": {
+                        "creator_name": creator_name,
+                        "strategy_name": new_strategy_name,
+                    },
                 }
-            })
-                
+            )
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"更新策略过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '更新策略失败，请重试'})
+        return jsonify({"code": 500, "message": "更新策略失败，请重试"})
+
 
 # 删除策略API
-@app.route('/api/strategies/<creator_name>/<strategy_name>', methods=['DELETE'])
+@app.route("/api/strategies/<creator_name>/<strategy_name>", methods=["DELETE"])
 @token_required
 def delete_strategy(current_user, creator_name, strategy_name):
     """删除策略接口"""
     try:
         # 权限检查：只能删除自己创建的策略
-        if creator_name != current_user['user_name']:
-            return jsonify({'code': 403, 'message': '无权限删除此策略'})
-        
+        if creator_name != current_user["user_name"]:
+            return jsonify({"code": 403, "message": "无权限删除此策略"})
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 检查策略是否存在
             check_sql = "SELECT COUNT(*) as count FROM Strategy WHERE creator_name = %s AND strategy_name = %s"
             cursor.execute(check_sql, (creator_name, strategy_name))
-            if cursor.fetchone()['count'] == 0:
-                return jsonify({'code': 404, 'message': '策略不存在'})
-            
+            if cursor.fetchone()["count"] == 0:
+                return jsonify({"code": 404, "message": "策略不存在"})
+
             # 检查是否有关联的回测报告
             check_backtest_sql = "SELECT COUNT(*) as count FROM BacktestReport WHERE creator_name = %s AND strategy_name = %s"
             cursor.execute(check_backtest_sql, (creator_name, strategy_name))
-            backtest_count = cursor.fetchone()['count']
-            
+            backtest_count = cursor.fetchone()["count"]
+
             if backtest_count > 0:
-                return jsonify({'code': 400, 'message': f'策略已有 {backtest_count} 个回测报告，不能删除'})
-            
+                return jsonify(
+                    {
+                        "code": 400,
+                        "message": f"策略已有 {backtest_count} 个回测报告，不能删除",
+                    }
+                )
+
             # 删除相关记录（先删除外键约束的表）
             # 1. 删除策略参数关系
-            cursor.execute("DELETE FROM StrategyParamRel WHERE strategy_creator_name = %s AND strategy_name = %s", 
-                         (creator_name, strategy_name))
-            
+            cursor.execute(
+                "DELETE FROM StrategyParamRel WHERE strategy_creator_name = %s AND strategy_name = %s",
+                (creator_name, strategy_name),
+            )
+
             # 2. 删除交易信号
-            cursor.execute("DELETE FROM TradingSignal WHERE creator_name = %s AND strategy_name = %s", 
-                         (creator_name, strategy_name))
-            
+            cursor.execute(
+                "DELETE FROM TradingSignal WHERE creator_name = %s AND strategy_name = %s",
+                (creator_name, strategy_name),
+            )
+
             # 3. 删除策略主记录
-            cursor.execute("DELETE FROM Strategy WHERE creator_name = %s AND strategy_name = %s", 
-                         (creator_name, strategy_name))
-            
+            cursor.execute(
+                "DELETE FROM Strategy WHERE creator_name = %s AND strategy_name = %s",
+                (creator_name, strategy_name),
+            )
+
             connection.commit()
-            
-            return jsonify({
-                'code': 200,
-                'message': '策略删除成功'
-            })
-                
+
+            return jsonify({"code": 200, "message": "策略删除成功"})
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"删除策略过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '删除策略失败，请重试'})
+        return jsonify({"code": 500, "message": "删除策略失败，请重试"})
+
 
 # 获取策略参数列表API
-@app.route('/api/strategies/<creator_name>/<strategy_name>/params', methods=['GET'])
+@app.route("/api/strategies/<creator_name>/<strategy_name>/params", methods=["GET"])
 @token_required
 def get_strategy_params(current_user, creator_name, strategy_name):
     """获取策略参数列表接口"""
@@ -1364,7 +1613,7 @@ def get_strategy_params(current_user, creator_name, strategy_name):
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 首先检查策略是否存在和权限
             strategy_check_sql = """
             SELECT public FROM Strategy 
@@ -1372,14 +1621,17 @@ def get_strategy_params(current_user, creator_name, strategy_name):
             """
             cursor.execute(strategy_check_sql, (creator_name, strategy_name))
             strategy_info = cursor.fetchone()
-            
+
             if not strategy_info:
-                return jsonify({'code': 404, 'message': '策略不存在'})
-            
+                return jsonify({"code": 404, "message": "策略不存在"})
+
             # 检查访问权限
-            if not strategy_info['public'] and creator_name != current_user['user_name']:
-                return jsonify({'code': 403, 'message': '无权限访问此策略的参数'})
-            
+            if (
+                not strategy_info["public"]
+                and creator_name != current_user["user_name"]
+            ):
+                return jsonify({"code": 403, "message": "无权限访问此策略的参数"})
+
             # 查询策略关联的参数
             select_sql = """
             SELECT p.creator_name, p.param_name, p.data_id, p.param_type, 
@@ -1391,140 +1643,153 @@ def get_strategy_params(current_user, creator_name, strategy_name):
             WHERE spr.strategy_creator_name = %s AND spr.strategy_name = %s
             ORDER BY p.creation_time ASC
             """
-            
+
             cursor.execute(select_sql, (creator_name, strategy_name))
             params = cursor.fetchall()
-            
+
             # 格式化时间字段
             for param in params:
-                if param['creation_time']:
-                    param['creation_time'] = param['creation_time'].strftime('%Y-%m-%d %H:%M:%S')
-                if param['update_time']:
-                    param['update_time'] = param['update_time'].strftime('%Y-%m-%d %H:%M:%S')
-            
-            return jsonify({
-                'code': 200,
-                'message': '获取策略参数成功',
-                'data': params
-            })
-                
+                if param["creation_time"]:
+                    param["creation_time"] = param["creation_time"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                if param["update_time"]:
+                    param["update_time"] = param["update_time"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+
+            return jsonify({"code": 200, "message": "获取策略参数成功", "data": params})
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"获取策略参数过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '获取策略参数失败，请重试'})
+        return jsonify({"code": 500, "message": "获取策略参数失败，请重试"})
+
 
 # 添加策略参数关系API
-@app.route('/api/strategies/<creator_name>/<strategy_name>/params', methods=['POST'])
+@app.route("/api/strategies/<creator_name>/<strategy_name>/params", methods=["POST"])
 @token_required
 def add_strategy_param(current_user, creator_name, strategy_name):
     """添加策略参数关系接口"""
     try:
         # 权限检查：只能修改自己创建的策略
-        if creator_name != current_user['user_name']:
-            return jsonify({'code': 403, 'message': '无权限修改此策略'})
-        
+        if creator_name != current_user["user_name"]:
+            return jsonify({"code": 403, "message": "无权限修改此策略"})
+
         data = request.get_json()
-        param_creator_name = data.get('param_creator_name', '').strip()
-        param_name = data.get('param_name', '').strip()
-        
+        param_creator_name = data.get("param_creator_name", "").strip()
+        param_name = data.get("param_name", "").strip()
+
         if not param_creator_name or not param_name:
-            return jsonify({'code': 400, 'message': '参数创建者和参数名不能为空'})
-        
+            return jsonify({"code": 400, "message": "参数创建者和参数名不能为空"})
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 检查策略是否存在
             strategy_check_sql = "SELECT COUNT(*) as count FROM Strategy WHERE creator_name = %s AND strategy_name = %s"
             cursor.execute(strategy_check_sql, (creator_name, strategy_name))
-            if cursor.fetchone()['count'] == 0:
-                return jsonify({'code': 404, 'message': '策略不存在'})
-            
+            if cursor.fetchone()["count"] == 0:
+                return jsonify({"code": 404, "message": "策略不存在"})
+
             # 检查参数是否存在
             param_check_sql = "SELECT COUNT(*) as count FROM Param WHERE creator_name = %s AND param_name = %s"
             cursor.execute(param_check_sql, (param_creator_name, param_name))
-            if cursor.fetchone()['count'] == 0:
-                return jsonify({'code': 404, 'message': '参数不存在'})
-            
+            if cursor.fetchone()["count"] == 0:
+                return jsonify({"code": 404, "message": "参数不存在"})
+
             # 检查关系是否已存在
             rel_check_sql = """
             SELECT COUNT(*) as count FROM StrategyParamRel 
             WHERE strategy_creator_name = %s AND strategy_name = %s 
               AND param_creator_name = %s AND param_name = %s
             """
-            cursor.execute(rel_check_sql, (creator_name, strategy_name, param_creator_name, param_name))
-            if cursor.fetchone()['count'] > 0:
-                return jsonify({'code': 400, 'message': '参数关系已存在'})
-            
+            cursor.execute(
+                rel_check_sql,
+                (creator_name, strategy_name, param_creator_name, param_name),
+            )
+            if cursor.fetchone()["count"] > 0:
+                return jsonify({"code": 400, "message": "参数关系已存在"})
+
             # 插入关系记录
             insert_sql = """
             INSERT INTO StrategyParamRel 
             (strategy_creator_name, strategy_name, param_creator_name, param_name)
             VALUES (%s, %s, %s, %s)
             """
-            cursor.execute(insert_sql, (creator_name, strategy_name, param_creator_name, param_name))
-            
+            cursor.execute(
+                insert_sql,
+                (creator_name, strategy_name, param_creator_name, param_name),
+            )
+
             connection.commit()
-            
-            return jsonify({
-                'code': 200,
-                'message': '添加策略参数关系成功'
-            })
-                
+
+            return jsonify({"code": 200, "message": "添加策略参数关系成功"})
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"添加策略参数关系过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '添加策略参数关系失败，请重试'})
+        return jsonify({"code": 500, "message": "添加策略参数关系失败，请重试"})
+
 
 # 删除策略参数关系API
-@app.route('/api/strategies/<creator_name>/<strategy_name>/params/<param_creator_name>/<param_name>', methods=['DELETE'])
+@app.route(
+    "/api/strategies/<creator_name>/<strategy_name>/params/<param_creator_name>/<param_name>",
+    methods=["DELETE"],
+)
 @token_required
-def remove_strategy_param(current_user, creator_name, strategy_name, param_creator_name, param_name):
+def remove_strategy_param(
+    current_user, creator_name, strategy_name, param_creator_name, param_name
+):
     """删除策略参数关系接口"""
     try:
         # 权限检查：只能修改自己创建的策略
-        if creator_name != current_user['user_name']:
-            return jsonify({'code': 403, 'message': '无权限修改此策略'})
-        
+        if creator_name != current_user["user_name"]:
+            return jsonify({"code": 403, "message": "无权限修改此策略"})
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
-            
+
             # 检查关系是否存在
             check_sql = """
             SELECT COUNT(*) as count FROM StrategyParamRel 
             WHERE strategy_creator_name = %s AND strategy_name = %s 
               AND param_creator_name = %s AND param_name = %s
             """
-            cursor.execute(check_sql, (creator_name, strategy_name, param_creator_name, param_name))
-            if cursor.fetchone()['count'] == 0:
-                return jsonify({'code': 404, 'message': '参数关系不存在'})
-            
+            cursor.execute(
+                check_sql, (creator_name, strategy_name, param_creator_name, param_name)
+            )
+            if cursor.fetchone()["count"] == 0:
+                return jsonify({"code": 404, "message": "参数关系不存在"})
+
             # 删除关系记录
             delete_sql = """
             DELETE FROM StrategyParamRel 
             WHERE strategy_creator_name = %s AND strategy_name = %s 
               AND param_creator_name = %s AND param_name = %s
             """
-            cursor.execute(delete_sql, (creator_name, strategy_name, param_creator_name, param_name))
-            
+            cursor.execute(
+                delete_sql,
+                (creator_name, strategy_name, param_creator_name, param_name),
+            )
+
             connection.commit()
-            
-            return jsonify({
-                'code': 200,
-                'message': '删除策略参数关系成功'
-            })
-                
+
+            return jsonify({"code": 200, "message": "删除策略参数关系成功"})
+
         finally:
             connection.close()
-            
+
     except Exception as e:
         logger.error(f"删除策略参数关系过程中发生错误: {str(e)}")
-        return jsonify({'code': 500, 'message': '删除策略参数关系失败，请重试'})
+        return jsonify({"code": 500, "message": "删除策略参数关系失败，请重试"})
+
 
 # =============================================
 # 指标管理相关API
@@ -1551,7 +1816,7 @@ def get_indicators(current_user):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -1690,8 +1955,6 @@ def create_indicator(current_user):
             return jsonify({"message": "指标名称和计算函数不能为空"}), 400
 
         # 验证指标名称格式（仅允许中英文、数字、下划线）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_\u4e00-\u9fa5]+$", indicator_name):
             return jsonify({"message": "指标名称只能包含中英文、数字、下划线"}), 400
 
@@ -1700,7 +1963,7 @@ def create_indicator(current_user):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -1763,7 +2026,7 @@ def update_indicator(current_user, indicator_composite_id):
     try:
         # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('.', 1)
+            parts = indicator_composite_id.split(".", 1)
             if len(parts) != 2:
                 return jsonify({"message": "无效的指标ID格式"}), 400
             creator_name, indicator_name = parts
@@ -1800,8 +2063,6 @@ def update_indicator(current_user, indicator_composite_id):
             return jsonify({"message": "指标名称和计算函数不能为空"}), 400
 
         # 验证指标名称格式
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_\u4e00-\u9fa5]+$", new_indicator_name):
             return jsonify({"message": "指标名称只能包含中英文、数字、下划线"}), 400
 
@@ -1810,7 +2071,7 @@ def update_indicator(current_user, indicator_composite_id):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -1931,7 +2192,7 @@ def delete_indicator(current_user, indicator_composite_id):
     try:
         # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('.', 1)
+            parts = indicator_composite_id.split(".", 1)
             if len(parts) != 2:
                 return jsonify({"message": "无效的指标ID格式"}), 400
             creator_name, indicator_name = parts
@@ -1943,7 +2204,7 @@ def delete_indicator(current_user, indicator_composite_id):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -2223,12 +2484,21 @@ def delete_indicator_param_relation(current_user, relation_id):
     try:
         # 解析关系ID (格式: indicator_creator.indicator_name.param_creator.param_name)
         try:
-            parts = relation_id.split('.')
+            parts = relation_id.split(".")
             if len(parts) != 4:
-                return jsonify({'message': '无效的关系ID格式，应为indicator_creator.indicator_name.param_creator.param_name'}), 400
-            
-            indicator_creator_name, indicator_name, param_creator_name, param_name = parts
-            
+                return (
+                    jsonify(
+                        {
+                            "message": "无效的关系ID格式，应为indicator_creator.indicator_name.param_creator.param_name"
+                        }
+                    ),
+                    400,
+                )
+
+            indicator_creator_name, indicator_name, param_creator_name, param_name = (
+                parts
+            )
+
         except Exception as parse_error:
             logger.error(f"解析关系ID失败: {str(parse_error)}")
             return jsonify({"message": "无效的关系ID格式"}), 400
@@ -2289,7 +2559,7 @@ def toggle_indicator_status(current_user, indicator_composite_id):
     try:
         # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('.', 1)
+            parts = indicator_composite_id.split(".", 1)
             if len(parts) != 2:
                 return jsonify({"message": "无效的指标ID格式"}), 400
             creator_name, indicator_name = parts
@@ -2301,7 +2571,7 @@ def toggle_indicator_status(current_user, indicator_composite_id):
             with connection.cursor() as cursor:
                 # 获取当前用户信息
                 user_sql = "SELECT user_name FROM User WHERE user_id = %s"
-                cursor.execute(user_sql, (current_user['user_id'],))
+                cursor.execute(user_sql, (current_user["user_id"],))
                 current_user_info = cursor.fetchone()
 
                 if not current_user_info:
@@ -2322,7 +2592,7 @@ def toggle_indicator_status(current_user, indicator_composite_id):
                     return jsonify({"message": "无权限修改他人创建的指标状态"}), 403
 
                 # 切换状态
-                current_status = existing_indicator['is_active']
+                current_status = existing_indicator["is_active"]
                 new_status = 0 if current_status == 1 else 1
 
                 # 更新状态
