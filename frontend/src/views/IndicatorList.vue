@@ -160,7 +160,7 @@
             border
             v-if="currentIndicatorParams.length > 0"
           >
-            <el-table-column prop="param_id" label="参数ID" width="150" />
+            <el-table-column prop="param_name" label="参数ID" width="150" />
             <el-table-column prop="data_id" label="数据来源ID" width="200" />
             <el-table-column prop="param_type" label="参数类型" width="120">
               <template #default="scope">
@@ -196,8 +196,8 @@
           >
             <el-row :gutter="20">
               <el-col :span="12">
-                <el-form-item label="参数ID" prop="param_id">
-                  <el-input v-model="addParamForm.param_id" placeholder="请输入参数ID" />
+                <el-form-item label="参数ID" prop="param_name">
+                  <el-input v-model="addParamForm.param_name" placeholder="请输入参数ID" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -309,7 +309,7 @@ export default {
     
     // 添加参数表单数据
     const addParamForm = reactive({
-      param_id: '',
+      param_name: '',
       data_id: '',
       param_type: 'table',
       pre_period: 0,
@@ -330,7 +330,7 @@ export default {
     }
     
     const addParamRules = {
-      param_id: [
+      param_name: [
         { required: true, message: '请输入参数ID', trigger: 'blur' },
         { min: 1, max: 50, message: '参数ID长度在 1 到 50 个字符', trigger: 'blur' }
       ],
@@ -678,7 +678,7 @@ export default {
       
       // 重置添加参数表单
       Object.assign(addParamForm, {
-        param_id: '',
+        param_name: '',
         data_id: '',
         param_type: 'table',
         pre_period: 0,
@@ -701,7 +701,7 @@ export default {
         if (indicator.indicator_name === 'MACD') {
           mockParams = [
             {
-              param_id: 'close_price',
+              param_name: 'close_price',
               data_id: 'daily.close',
               param_type: 'table',
               pre_period: 26, // MACD通常使用26天的数据
@@ -712,7 +712,7 @@ export default {
         } else if (indicator.indicator_name === 'RSI') {
           mockParams = [
             {
-              param_id: 'close_price',
+              param_name: 'close_price',
               data_id: 'daily.close',
               param_type: 'table',
               pre_period: 14, // RSI通常使用14天的数据
@@ -723,7 +723,7 @@ export default {
         } else if (indicator.indicator_name === 'KDJ') {
           mockParams = [
             {
-              param_id: 'high_price',
+              param_name: 'high_price',
               data_id: 'daily.high',
               param_type: 'table',
               pre_period: 9, // KDJ通常使用9天的数据
@@ -731,7 +731,7 @@ export default {
               agg_func: null
             },
             {
-              param_id: 'low_price',
+              param_name: 'low_price',
               data_id: 'daily.low',
               param_type: 'table',
               pre_period: 9,
@@ -739,7 +739,7 @@ export default {
               agg_func: null
             },
             {
-              param_id: 'close_price',
+              param_name: 'close_price',
               data_id: 'daily.close',
               param_type: 'table',
               pre_period: 9,
@@ -796,7 +796,7 @@ export default {
         loading.value = true
         
         // 检查参数ID是否已存在
-        const exists = currentIndicatorParams.value.some(p => p.param_id === addParamForm.param_id)
+        const exists = currentIndicatorParams.value.some(p => p.param_name === addParamForm.param_name)
         if (exists) {
           ElMessage.error('参数ID已存在，请使用其他ID')
           loading.value = false
@@ -814,7 +814,7 @@ export default {
         
         // 重置表单
         Object.assign(addParamForm, {
-          param_id: '',
+          param_name: '',
           data_id: '',
           param_type: 'table',
           pre_period: 0,
@@ -834,7 +834,7 @@ export default {
     // 删除指标参数
     const removeIndicatorParam = (param) => {
       ElMessageBox.confirm(
-        `确定要删除参数"${param.param_id}"吗？`,
+        `确定要删除参数"${param.param_name}"吗？`,
         '确认删除',
         {
           confirmButtonText: '确定',
@@ -847,11 +847,11 @@ export default {
           
           // 这里使用模拟删除，实际开发中应替换为真实的API调用
           // await axios.delete(
-          //   `/api/indicators/${currentIndicator.value.creator_name}/${currentIndicator.value.indicator_name}/params/${param.param_id}`
+          //   `/api/indicators/${currentIndicator.value.creator_name}/${currentIndicator.value.indicator_name}/params/${param.param_name}`
           // )
           
           // 从列表中删除参数
-          currentIndicatorParams.value = currentIndicatorParams.value.filter(p => p.param_id !== param.param_id)
+          currentIndicatorParams.value = currentIndicatorParams.value.filter(p => p.param_name !== param.param_name)
           
           ElMessage.success('参数删除成功')
         } catch (error) {

@@ -128,7 +128,7 @@
         style="width: 100%"
         border
       >
-        <el-table-column prop="param_id" label="参数ID" width="150" />
+        <el-table-column prop="param_name" label="参数ID" width="150" />
         <el-table-column prop="data_id" label="数据来源ID" width="200" />
         <el-table-column prop="param_type" label="参数类型" width="120">
           <template #default="scope">
@@ -166,8 +166,8 @@
         :rules="paramRules"
         label-width="120px"
       >
-        <el-form-item label="参数ID" prop="param_id">
-          <el-input v-model="paramForm.param_id" placeholder="请输入参数ID" />
+        <el-form-item label="参数ID" prop="param_name">
+          <el-input v-model="paramForm.param_name" placeholder="请输入参数ID" />
         </el-form-item>
         <el-form-item label="数据来源ID" prop="data_id">
           <el-autocomplete
@@ -446,7 +446,7 @@ export default {
         // 模拟策略参数数据
         const mockParams = [
           {
-            param_id: 'market_cap',
+            param_name: 'market_cap',
             data_id: 'valuation.market_cap',
             param_type: 'table',
             pre_period: 0,
@@ -454,7 +454,7 @@ export default {
             agg_func: null
           },
           {
-            param_id: 'close_price',
+            param_name: 'close_price',
             data_id: 'daily.close',
             param_type: 'table',
             pre_period: 20,
@@ -549,7 +549,7 @@ export default {
     const showAddParamDialog = () => {
       // 重置表单
       Object.assign(paramForm, {
-        param_id: '',
+        param_name: '',
         data_id: '',
         param_type: 'table',
         pre_period: 0,
@@ -600,7 +600,7 @@ export default {
         loading.value = true
         
         // 检查参数ID是否已存在
-        const exists = strategyParams.value.some(p => p.param_id === paramForm.param_id)
+        const exists = strategyParams.value.some(p => p.param_name === paramForm.param_name)
         if (exists) {
           ElMessage.error('参数ID已存在，请使用其他ID')
           loading.value = false
@@ -626,7 +626,7 @@ export default {
     // 删除参数
     const removeParam = (param) => {
       ElMessageBox.confirm(
-        `确定要删除参数"${param.param_id}"吗？`,
+        `确定要删除参数"${param.param_name}"吗？`,
         '确认删除',
         {
           confirmButtonText: '确定',
@@ -638,10 +638,10 @@ export default {
           loading.value = true
           
           // 这里使用模拟删除，实际开发中应替换为真实的API调用
-          // await axios.delete(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params/${param.param_id}`)
+          // await axios.delete(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params/${param.param_name}`)
           
           // 从列表中删除参数
-          strategyParams.value = strategyParams.value.filter(p => p.param_id !== param.param_id)
+          strategyParams.value = strategyParams.value.filter(p => p.param_name !== param.param_name)
           
           ElMessage.success('参数删除成功')
         } catch (error) {
@@ -738,7 +738,7 @@ export default {
     // 添加参数表单
     const paramFormRef = ref(null)
     const paramForm = reactive({
-      param_id: '',
+      param_name: '',
       data_id: '',
       param_type: 'table',
       pre_period: 0,
@@ -747,7 +747,7 @@ export default {
     })
     
     const paramRules = {
-      param_id: [
+      param_name: [
         { required: true, message: '请输入参数ID', trigger: 'blur' },
         { min: 1, max: 50, message: '参数ID长度在 1 到 50 个字符', trigger: 'blur' }
       ],

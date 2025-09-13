@@ -44,7 +44,7 @@
       border
       row-key="id"
     >
-      <el-table-column prop="param_id" label="参数ID" width="150" />
+      <el-table-column prop="param_name" label="参数ID" width="150" />
       <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
       <el-table-column prop="param_type" label="参数类型" width="120">
         <template #default="scope">
@@ -118,8 +118,8 @@
         :rules="paramRules"
         label-width="120px"
       >
-        <el-form-item label="参数ID" prop="param_id">
-          <el-input v-model="paramForm.param_id" placeholder="请输入参数ID" />
+        <el-form-item label="参数ID" prop="param_name">
+          <el-input v-model="paramForm.param_name" placeholder="请输入参数ID" />
         </el-form-item>
         <el-form-item label="参数类型" prop="param_type">
           <el-select v-model="paramForm.param_type" placeholder="请选择参数类型">
@@ -201,7 +201,7 @@ export default {
     
     // 参数表单数据
     const paramForm = reactive({
-      param_id: '',
+      param_name: '',
       data_id: '',
       param_type: 'table',
       pre_period: 0,
@@ -211,7 +211,7 @@ export default {
     
     // 表单验证规则
     const paramRules = {
-      param_id: [
+      param_name: [
         { required: true, message: '请输入参数ID', trigger: 'blur' },
         { min: 1, max: 50, message: '参数ID长度在 1 到 50 个字符', trigger: 'blur' },
         { pattern: /^[a-zA-Z0-9_.]+$/, message: '参数ID只能包含字母、数字、下划线和点号', trigger: 'blur' }
@@ -314,7 +314,7 @@ export default {
       
       // 重置表单
       Object.assign(paramForm, {
-        param_id: '',
+        param_name: '',
         data_id: '',
         param_type: 'table',
         pre_period: 0,
@@ -332,7 +332,7 @@ export default {
       
       // 填充表单
       Object.assign(paramForm, {
-        param_id: param.param_id,
+        param_name: param.param_name,
         data_id: param.data_id,
         param_type: param.param_type,
         pre_period: param.pre_period || 0,
@@ -346,7 +346,7 @@ export default {
     // 删除参数
     const deleteParam = (param) => {
       ElMessageBox.confirm(
-        `确定要删除参数"${param.param_id}"吗？`,
+        `确定要删除参数"${param.param_name}"吗？`,
         '确认删除',
         {
           confirmButtonText: '确定',
@@ -402,7 +402,7 @@ export default {
       
       // 重置表单
       Object.assign(paramForm, {
-        param_id: `copy_${param.param_id}`,
+        param_name: `copy_${param.param_name}`,
         data_id: param.data_id,
         param_type: param.param_type,
         pre_period: param.pre_period || 0,
@@ -435,7 +435,7 @@ export default {
         
         // 准备要发送的数据，确保格式正确
         const submitData = {
-          param_id: paramForm.param_id || '',
+          param_name: paramForm.param_name || '',
           data_id: paramForm.data_id || '',
           param_type: paramForm.param_type || 'table',
           pre_period: Number(paramForm.pre_period) || 0,

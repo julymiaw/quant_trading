@@ -304,9 +304,9 @@ def get_params(current_user):
                 # 构建基础查询SQL
                 base_sql = """
                 SELECT 
-                    CONCAT(creator_name, '_', param_id) as id,
+                    CONCAT(creator_name, '_', param_name) as id,
                     creator_name,
-                    param_id,
+                    param_name,
                     data_id,
                     param_type,
                     pre_period,
@@ -339,16 +339,16 @@ def get_params(current_user):
                 
                 # 根据搜索关键词筛选
                 if search_keyword:
-                    where_conditions.append("(param_id LIKE %s OR data_id LIKE %s)")
+                    where_conditions.append("(param_name LIKE %s OR data_id LIKE %s)")
                     query_params.extend([f'%{search_keyword}%', f'%{search_keyword}%'])
                 
                 # 组装完整的查询SQL
                 if where_conditions:
                     count_sql = f"SELECT COUNT(*) as total FROM Param WHERE {' AND '.join(where_conditions)}"
-                    data_sql = f"{base_sql} AND {' AND '.join(where_conditions)} ORDER BY creator_name, param_id"
+                    data_sql = f"{base_sql} AND {' AND '.join(where_conditions)} ORDER BY creator_name, param_name"
                 else:
                     count_sql = "SELECT COUNT(*) as total FROM Param"
-                    data_sql = f"{base_sql} ORDER BY creator_name, param_id"
+                    data_sql = f"{base_sql} ORDER BY creator_name, param_name"
                 
                 # 获取总数
                 cursor.execute(count_sql, query_params)
@@ -369,7 +369,7 @@ def get_params(current_user):
                     formatted_params.append({
                         'id': param['id'],
                         'creator_name': param['creator_name'],
-                        'param_id': param['param_id'],
+                        'param_name': param['param_name'],
                         'data_id': param['data_id'],
                         'param_type': param['param_type'],
                         'pre_period': param['pre_period'],
@@ -404,12 +404,12 @@ def create_param(current_user):
         data = request.get_json()
         
         # 验证必填字段
-        required_fields = ['param_id', 'data_id', 'param_type', 'pre_period', 'post_period']
+        required_fields = ['param_name', 'data_id', 'param_type', 'pre_period', 'post_period']
         for field in required_fields:
             if field not in data or data[field] is None:
                 return jsonify({'message': f'缺少必填字段: {field}'}), 400
         
-        param_id = str(data['param_id']).strip() if data['param_id'] is not None else ''
+        param_name = str(data['param_name']).strip() if data['param_name'] is not None else ''
         data_id = str(data['data_id']).strip() if data['data_id'] is not None else ''
         param_type = data['param_type']
         pre_period = data['pre_period']
@@ -423,7 +423,7 @@ def create_param(current_user):
             agg_func = str(agg_func_raw).strip() if str(agg_func_raw).strip() else None
         
         # 验证数据格式
-        if not param_id or not data_id:
+        if not param_name or not data_id:
             return jsonify({'message': '参数ID和数据来源ID不能为空'}), 400
         
         if param_type not in ['table', 'indicator']:
@@ -440,7 +440,7 @@ def create_param(current_user):
         
         # 验证参数ID格式（仅允许字母、数字、下划线和点号）
         import re
-        if not re.match(r'^[a-zA-Z0-9_.]+$', param_id):
+        if not re.match(r'^[a-zA-Z0-9_.]+$', param_name):
             return jsonify({'message': '参数ID只能包含字母、数字、下划线和点号'}), 400
         
         connection = get_db_connection()
@@ -457,19 +457,19 @@ def create_param(current_user):
                 current_user_name = current_user_info['user_name']
                 
                 # 检查参数ID是否已存在（同一创建者下）
-                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_id = %s"
-                cursor.execute(check_sql, (current_user_name, param_id))
+                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_name = %s"
+                cursor.execute(check_sql, (current_user_name, param_name))
                 if cursor.fetchone():
-                    return jsonify({'message': f'参数ID "{param_id}" 已存在'}), 400
+                    return jsonify({'message': f'参数ID "{param_name}" 已存在'}), 400
                 
                 # 插入新参数
                 insert_sql = """
-                INSERT INTO Param (creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
+                INSERT INTO Param (creator_name, param_name, data_id, param_type, pre_period, post_period, agg_func)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(insert_sql, (
                     current_user_name,
-                    param_id,
+                    param_name,
                     data_id,
                     param_type,
                     pre_period,
@@ -480,9 +480,9 @@ def create_param(current_user):
                 
                 # 返回创建的参数信息
                 new_param = {
-                    'id': f"{current_user_name}_{param_id}",
+                    'id': f"{current_user_name}_{param_name}",
                     'creator_name': current_user_name,
-                    'param_id': param_id,
+                    'param_name': param_name,
                     'data_id': data_id,
                     'param_type': param_type,
                     'pre_period': pre_period,
@@ -509,24 +509,24 @@ def create_param(current_user):
 def update_param(current_user, param_composite_id):
     """更新参数接口"""
     try:
-        # 解析复合ID (格式: creator_name_param_id)
+        # 解析复合ID (格式: creator_name_param_name)
         try:
             parts = param_composite_id.split('_', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的参数ID格式'}), 400
-            creator_name, param_id = parts
+            creator_name, param_name = parts
         except:
             return jsonify({'message': '无效的参数ID格式'}), 400
         
         data = request.get_json()
         
         # 验证必填字段
-        required_fields = ['param_id', 'data_id', 'param_type', 'pre_period', 'post_period']
+        required_fields = ['param_name', 'data_id', 'param_type', 'pre_period', 'post_period']
         for field in required_fields:
             if field not in data or data[field] is None:
                 return jsonify({'message': f'缺少必填字段: {field}'}), 400
         
-        new_param_id = str(data['param_id']).strip() if data['param_id'] is not None else ''
+        new_param_name = str(data['param_name']).strip() if data['param_name'] is not None else ''
         data_id = str(data['data_id']).strip() if data['data_id'] is not None else ''
         param_type = data['param_type']
         pre_period = data['pre_period']
@@ -540,7 +540,7 @@ def update_param(current_user, param_composite_id):
             agg_func = str(agg_func_raw).strip() if str(agg_func_raw).strip() else None
         
         # 验证数据格式
-        if not new_param_id or not data_id:
+        if not new_param_name or not data_id:
             return jsonify({'message': '参数ID和数据来源ID不能为空'}), 400
         
         if param_type not in ['table', 'indicator']:
@@ -557,7 +557,7 @@ def update_param(current_user, param_composite_id):
         
         # 验证参数ID格式
         import re
-        if not re.match(r'^[a-zA-Z0-9_.]+$', new_param_id):
+        if not re.match(r'^[a-zA-Z0-9_.]+$', new_param_name):
             return jsonify({'message': '参数ID只能包含字母、数字、下划线和点号'}), 400
         
         connection = get_db_connection()
@@ -574,8 +574,8 @@ def update_param(current_user, param_composite_id):
                 current_user_name = current_user_info['user_name']
                 
                 # 检查参数是否存在
-                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_id = %s"
-                cursor.execute(check_sql, (creator_name, param_id))
+                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_name = %s"
+                cursor.execute(check_sql, (creator_name, param_name))
                 existing_param = cursor.fetchone()
                 
                 if not existing_param:
@@ -586,61 +586,61 @@ def update_param(current_user, param_composite_id):
                     return jsonify({'message': '无权限修改他人创建的参数'}), 403
                 
                 # 如果参数ID有变化，检查新ID是否已存在
-                if new_param_id != param_id:
-                    check_new_id_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_id = %s"
-                    cursor.execute(check_new_id_sql, (creator_name, new_param_id))
+                if new_param_name != param_name:
+                    check_new_id_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_name = %s"
+                    cursor.execute(check_new_id_sql, (creator_name, new_param_name))
                     if cursor.fetchone():
-                        return jsonify({'message': f'新的参数ID "{new_param_id}" 已存在'}), 400
+                        return jsonify({'message': f'新的参数ID "{new_param_name}" 已存在'}), 400
                 
                 # 更新参数
-                if new_param_id != param_id:
+                if new_param_name != param_name:
                     # 如果参数ID变化了，需要先更新关联关系，然后更新参数本身
                     # 更新指标参数关系表中的参数ID引用
                     update_indicator_rel_sql = """
                     UPDATE IndicatorParamRel 
-                    SET param_id = %s 
-                    WHERE param_creator_name = %s AND param_id = %s
+                    SET param_name = %s 
+                    WHERE param_creator_name = %s AND param_name = %s
                     """
-                    cursor.execute(update_indicator_rel_sql, (new_param_id, creator_name, param_id))
+                    cursor.execute(update_indicator_rel_sql, (new_param_name, creator_name, param_name))
                     
                     # 更新策略参数关系表中的参数ID引用
                     update_strategy_rel_sql = """
                     UPDATE StrategyParamRel 
-                    SET param_id = %s 
-                    WHERE param_creator_name = %s AND param_id = %s
+                    SET param_name = %s 
+                    WHERE param_creator_name = %s AND param_name = %s
                     """
-                    cursor.execute(update_strategy_rel_sql, (new_param_id, creator_name, param_id))
+                    cursor.execute(update_strategy_rel_sql, (new_param_name, creator_name, param_name))
                     
                     # 更新参数表
                     update_sql = """
                     UPDATE Param 
-                    SET param_id = %s, data_id = %s, param_type = %s, 
+                    SET param_name = %s, data_id = %s, param_type = %s, 
                         pre_period = %s, post_period = %s, agg_func = %s
-                    WHERE creator_name = %s AND param_id = %s
+                    WHERE creator_name = %s AND param_name = %s
                     """
                     cursor.execute(update_sql, (
-                        new_param_id, data_id, param_type, pre_period, post_period, agg_func,
-                        creator_name, param_id
+                        new_param_name, data_id, param_type, pre_period, post_period, agg_func,
+                        creator_name, param_name
                     ))
                 else:
-                    # 只更新除param_id外的其他字段
+                    # 只更新除param_name外的其他字段
                     update_sql = """
                     UPDATE Param 
                     SET data_id = %s, param_type = %s, pre_period = %s, post_period = %s, agg_func = %s
-                    WHERE creator_name = %s AND param_id = %s
+                    WHERE creator_name = %s AND param_name = %s
                     """
                     cursor.execute(update_sql, (
                         data_id, param_type, pre_period, post_period, agg_func,
-                        creator_name, param_id
+                        creator_name, param_name
                     ))
                 
                 connection.commit()
                 
                 # 返回更新后的参数信息
                 updated_param = {
-                    'id': f"{creator_name}_{new_param_id}",
+                    'id': f"{creator_name}_{new_param_name}",
                     'creator_name': creator_name,
-                    'param_id': new_param_id,
+                    'param_name': new_param_name,
                     'data_id': data_id,
                     'param_type': param_type,
                     'pre_period': pre_period,
@@ -667,12 +667,12 @@ def update_param(current_user, param_composite_id):
 def delete_param(current_user, param_composite_id):
     """删除参数接口"""
     try:
-        # 解析复合ID (格式: creator_name_param_id)
+        # 解析复合ID (格式: creator_name_param_name)
         try:
             parts = param_composite_id.split('_', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的参数ID格式'}), 400
-            creator_name, param_id = parts
+            creator_name, param_name = parts
         except:
             return jsonify({'message': '无效的参数ID格式'}), 400
         
@@ -690,8 +690,8 @@ def delete_param(current_user, param_composite_id):
                 current_user_name = current_user_info['user_name']
                 
                 # 检查参数是否存在
-                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_id = %s"
-                cursor.execute(check_sql, (creator_name, param_id))
+                check_sql = "SELECT * FROM Param WHERE creator_name = %s AND param_name = %s"
+                cursor.execute(check_sql, (creator_name, param_name))
                 existing_param = cursor.fetchone()
                 
                 if not existing_param:
@@ -707,9 +707,9 @@ def delete_param(current_user, param_composite_id):
                 FROM IndicatorParamRel ipr
                 JOIN Indicator i ON ipr.indicator_creator_name = i.creator_name 
                     AND ipr.indicator_name = i.indicator_name
-                WHERE ipr.param_creator_name = %s AND ipr.param_id = %s
+                WHERE ipr.param_creator_name = %s AND ipr.param_name = %s
                 """
-                cursor.execute(check_indicator_rel_sql, (creator_name, param_id))
+                cursor.execute(check_indicator_rel_sql, (creator_name, param_name))
                 indicator_relations = cursor.fetchall()
                 
                 # 检查参数是否被策略引用
@@ -718,9 +718,9 @@ def delete_param(current_user, param_composite_id):
                 FROM StrategyParamRel spr
                 JOIN Strategy s ON spr.strategy_creator_name = s.creator_name 
                     AND spr.strategy_name = s.strategy_name
-                WHERE spr.param_creator_name = %s AND spr.param_id = %s
+                WHERE spr.param_creator_name = %s AND spr.param_name = %s
                 """
-                cursor.execute(check_strategy_rel_sql, (creator_name, param_id))
+                cursor.execute(check_strategy_rel_sql, (creator_name, param_name))
                 strategy_relations = cursor.fetchall()
                 
                 # 如果参数被引用，返回错误信息
@@ -738,8 +738,8 @@ def delete_param(current_user, param_composite_id):
                     }), 400
                 
                 # 删除参数（由于设置了外键约束，相关的关系记录会自动删除）
-                delete_sql = "DELETE FROM Param WHERE creator_name = %s AND param_id = %s"
-                cursor.execute(delete_sql, (creator_name, param_id))
+                delete_sql = "DELETE FROM Param WHERE creator_name = %s AND param_name = %s"
+                cursor.execute(delete_sql, (creator_name, param_name))
                 connection.commit()
                 
                 return jsonify({'message': '参数删除成功'}), 200
