@@ -309,7 +309,7 @@ def get_params(current_user):
                 # 构建基础查询SQL
                 base_sql = """
                 SELECT 
-                    CONCAT(creator_name, '_', param_name) as id,
+                    CONCAT(creator_name, '.', param_name) as id,
                     creator_name,
                     param_name,
                     data_id,
@@ -514,9 +514,9 @@ def create_param(current_user):
 def update_param(current_user, param_composite_id):
     """更新参数接口"""
     try:
-        # 解析复合ID (格式: creator_name_param_name)
+        # 解析复合ID (格式: creator_name.param_name)
         try:
-            parts = param_composite_id.split('_', 1)
+            parts = param_composite_id.split('.', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的参数ID格式'}), 400
             creator_name, param_name = parts
@@ -643,7 +643,7 @@ def update_param(current_user, param_composite_id):
                 
                 # 返回更新后的参数信息
                 updated_param = {
-                    'id': f"{creator_name}_{new_param_name}",
+                    'id': f"{creator_name}.{new_param_name}",
                     'creator_name': creator_name,
                     'param_name': new_param_name,
                     'data_id': data_id,
@@ -672,9 +672,9 @@ def update_param(current_user, param_composite_id):
 def delete_param(current_user, param_composite_id):
     """删除参数接口"""
     try:
-        # 解析复合ID (格式: creator_name_param_name)
+        # 解析复合ID (格式: creator_name.param_name)
         try:
-            parts = param_composite_id.split('_', 1)
+            parts = param_composite_id.split('.', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的参数ID格式'}), 400
             creator_name, param_name = parts
@@ -1428,7 +1428,7 @@ def get_indicators(current_user):
                 # 构建基础查询SQL
                 base_sql = """
                 SELECT 
-                    CONCAT(creator_name, '_', indicator_name) as id,
+                    CONCAT(creator_name, '.', indicator_name) as id,
                     creator_name,
                     indicator_name,
                     calculation_method,
@@ -1600,9 +1600,9 @@ def create_indicator(current_user):
 def update_indicator(current_user, indicator_composite_id):
     """更新指标接口"""
     try:
-        # 解析复合ID (格式: creator_name_indicator_name)
+        # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('_', 1)
+            parts = indicator_composite_id.split('.', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的指标ID格式'}), 400
             creator_name, indicator_name = parts
@@ -1727,9 +1727,9 @@ def update_indicator(current_user, indicator_composite_id):
 def delete_indicator(current_user, indicator_composite_id):
     """删除指标接口"""
     try:
-        # 解析复合ID (格式: creator_name_indicator_name)
+        # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('_', 1)
+            parts = indicator_composite_id.split('.', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的指标ID格式'}), 400
             creator_name, indicator_name = parts
@@ -1981,37 +1981,13 @@ def create_indicator_param_relation(current_user):
 def delete_indicator_param_relation(current_user, relation_id):
     """删除指标参数关系"""
     try:
-        # 解析关系ID (格式: indicator_creator.indicator_name_param_creator.param_name)
+        # 解析关系ID (格式: indicator_creator.indicator_name.param_creator.param_name)
         try:
-            parts = relation_id.split('_')
-            if len(parts) < 3:
-                return jsonify({'message': '无效的关系ID格式'}), 400
+            parts = relation_id.split('.')
+            if len(parts) != 4:
+                return jsonify({'message': '无效的关系ID格式，应为indicator_creator.indicator_name.param_creator.param_name'}), 400
             
-            # 找到第一个包含.的部分作为分割点
-            indicator_part = ""
-            param_part = ""
-            found_split = False
-            
-            for i, part in enumerate(parts):
-                if not found_split:
-                    if '.' in part and i > 0:  # 第二个及以后出现的.才是分割点
-                        indicator_part = '_'.join(parts[:i+1])
-                        param_part = '_'.join(parts[i+1:])
-                        found_split = True
-                        break
-                        
-            if not found_split or not indicator_part or not param_part:
-                return jsonify({'message': '无效的关系ID格式'}), 400
-            
-            # 解析指标信息
-            if '.' not in indicator_part:
-                return jsonify({'message': '无效的指标ID格式'}), 400
-            indicator_creator_name, indicator_name = indicator_part.split('.', 1)
-            
-            # 解析参数信息
-            if '.' not in param_part:
-                return jsonify({'message': '无效的参数ID格式'}), 400
-            param_creator_name, param_name = param_part.split('.', 1)
+            indicator_creator_name, indicator_name, param_creator_name, param_name = parts
             
         except Exception as parse_error:
             logger.error(f"解析关系ID失败: {str(parse_error)}")
@@ -2056,9 +2032,9 @@ def delete_indicator_param_relation(current_user, relation_id):
 def toggle_indicator_status(current_user, indicator_composite_id):
     """切换指标启用/禁用状态"""
     try:
-        # 解析复合ID (格式: creator_name_indicator_name)
+        # 解析复合ID (格式: creator_name.indicator_name)
         try:
-            parts = indicator_composite_id.split('_', 1)
+            parts = indicator_composite_id.split('.', 1)
             if len(parts) != 2:
                 return jsonify({'message': '无效的指标ID格式'}), 400
             creator_name, indicator_name = parts
@@ -2091,13 +2067,13 @@ def toggle_indicator_status(current_user, indicator_composite_id):
                     return jsonify({'message': '无权限修改他人创建的指标状态'}), 403
                 
                 # 切换状态
-                current_status = existing_indicator['is_enabled']
+                current_status = existing_indicator['is_active']
                 new_status = 0 if current_status == 1 else 1
                 
                 # 更新状态
                 update_sql = """
                 UPDATE Indicator 
-                SET is_enabled = %s, last_updated_time = %s 
+                SET is_active = %s, update_time = %s 
                 WHERE creator_name = %s AND indicator_name = %s
                 """
                 cursor.execute(update_sql, (new_status, datetime.now(), creator_name, indicator_name))

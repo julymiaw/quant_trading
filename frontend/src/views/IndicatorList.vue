@@ -511,7 +511,7 @@ export default {
           }
           
           // 使用后端API删除指标
-          const indicatorId = `${indicator.creator_name}_${indicator.indicator_name}`
+          const indicatorId = `${indicator.creator_name}.${indicator.indicator_name}`
           await axios.delete(`/api/indicators/${indicatorId}`, {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -586,7 +586,7 @@ export default {
         let response
         if (isEditMode.value) {
           // 编辑模式：PUT请求
-          const indicatorId = `${editingIndicator.value.creator_name}_${editingIndicator.value.indicator_name}`
+          const indicatorId = `${editingIndicator.value.creator_name}.${editingIndicator.value.indicator_name}`
           response = await axios.put(`/api/indicators/${indicatorId}`, submitData, {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -642,7 +642,7 @@ export default {
           return
         }
         
-        const indicatorId = `${indicator.creator_name}_${indicator.indicator_name}`
+        const indicatorId = `${indicator.creator_name}.${indicator.indicator_name}`
         await axios.put(`/api/indicators/${indicatorId}/toggle-status`, {}, {
           headers: {
             'Authorization': `Bearer ${token}`
