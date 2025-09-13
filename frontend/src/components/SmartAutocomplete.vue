@@ -16,7 +16,8 @@
         v-for="(suggestion, index) in suggestions"
         :key="index"
         :class="['suggestion-item', { active: selectedIndex === index }]"
-        @click="selectSuggestion(suggestion, index)"
+        @click.stop="selectSuggestion(suggestion, index)"
+        @mousedown.prevent
         @mouseenter="selectedIndex = index">
         {{ suggestion }}
       </div>
@@ -79,6 +80,10 @@ export default {
     // 处理输入事件
     const handleInput = (value) => {
       inputValue.value = value;
+      emit("update:modelValue", value);
+
+      // 重置选中索引
+      selectedIndex.value = -1;
 
       // 防抖处理
       if (fetchTimeout) {
@@ -100,12 +105,18 @@ export default {
     };
 
     // 处理失焦事件
-    const handleBlur = () => {
-      // 延迟隐藏，以便点击建议项能够正常工作
+    const handleBlur = (event) => {
+      // 检查焦点是否移动到建议下拉框内
       setTimeout(() => {
-        showSuggestions.value = false;
-        selectedIndex.value = -1;
-      }, 200);
+        const activeElement = document.activeElement;
+        const suggestionsEl = suggestionsRef.value;
+
+        // 如果焦点不在建议框内，才隐藏下拉框
+        if (!suggestionsEl || !suggestionsEl.contains(activeElement)) {
+          showSuggestions.value = false;
+          selectedIndex.value = -1;
+        }
+      }, 100);
     };
 
     // 获取建议
@@ -149,15 +160,25 @@ export default {
 
     // 选择建议
     const selectSuggestion = (suggestion, index) => {
+      // 直接设置输入框的值
       inputValue.value = suggestion;
       selectedIndex.value = index;
       showSuggestions.value = false;
 
+      // 触发事件通知父组件
+      emit("update:modelValue", suggestion);
       emit("select", suggestion);
 
       // 让输入框重新获得焦点
       nextTick(() => {
-        inputRef.value?.focus();
+        if (inputRef.value && inputRef.value.$el) {
+          const input = inputRef.value.$el.querySelector("input");
+          if (input) {
+            input.focus();
+            // 将光标移到文本末尾
+            input.setSelectionRange(suggestion.length, suggestion.length);
+          }
+        }
       });
     };
 
@@ -183,7 +204,10 @@ export default {
           break;
         case "Enter":
           event.preventDefault();
-          if (selectedIndex.value >= 0) {
+          if (
+            selectedIndex.value >= 0 &&
+            suggestions.value[selectedIndex.value]
+          ) {
             selectSuggestion(
               suggestions.value[selectedIndex.value],
               selectedIndex.value
