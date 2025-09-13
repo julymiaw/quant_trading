@@ -598,7 +598,7 @@ export default {
 
     // 返回上一页
     const goBack = () => {
-      router.push("/strategy-list");
+      router.push("/");
     };
 
     // 编辑基本信息
