@@ -935,25 +935,36 @@ def handle_entity_suggestions(node_type: str, input_text: str) -> list:
 def get_table_fields(table_name: str) -> list:
     """获取指定表的所有字段名"""
     try:
-        connection = get_db_connection()
+        # 根据表名判断使用哪个数据库
+        if table_name in ["daily", "daily_basic"]:
+            # 这些表在tushare_cache数据库中
+            connection = pymysql.connect(
+                host="localhost",
+                port=3306,
+                user="root",
+                password=config["db_password"],
+                database="tushare_cache",
+                charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+            )
+        else:
+            # 其他表在quantitative_trading数据库中
+            connection = get_db_connection()
         if connection is None:
             return []
 
         cursor = connection.cursor()
 
-        # 根据表名判断使用哪个数据库
-        if table_name in ["daily", "daily_basic"]:
-            # 这些表在tushare_cache数据库中，需要切换数据库连接
-            cursor.execute("USE tushare_cache")
-
         # 查询表的字段信息
         cursor.execute(f"DESCRIBE {table_name}")
-        fields = [row[0] for row in cursor.fetchall()]
+        fields = [row["Field"] for row in cursor.fetchall()]
         cursor.close()
         return fields
     except Exception as e:
         logger.error(f"获取表字段失败: {e}")
         return []
+    finally:
+        connection.close()
 
 
 def search_users(query: str = "") -> list:
@@ -966,11 +977,11 @@ def search_users(query: str = "") -> list:
         cursor = connection.cursor()
         if query:
             cursor.execute(
-                "SELECT DISTINCT user_name FROM users WHERE user_name LIKE %s ORDER BY user_name",
+                "SELECT DISTINCT user_name FROM User WHERE user_name LIKE %s ORDER BY user_name",
                 (f"{query}%",),
             )
         else:
-            cursor.execute("SELECT DISTINCT user_name FROM users ORDER BY user_name")
+            cursor.execute("SELECT DISTINCT user_name FROM User ORDER BY user_name")
 
         users = [row[0] for row in cursor.fetchall()]
         cursor.close()
@@ -990,12 +1001,12 @@ def search_strategies(creator_name: str, query: str = "") -> list:
         cursor = connection.cursor()
         if query:
             cursor.execute(
-                "SELECT strategy_name FROM strategies WHERE creator_name = %s AND strategy_name LIKE %s ORDER BY strategy_name",
+                "SELECT strategy_name FROM Strategy WHERE creator_name = %s AND strategy_name LIKE %s ORDER BY strategy_name",
                 (creator_name, f"{query}%"),
             )
         else:
             cursor.execute(
-                "SELECT strategy_name FROM strategies WHERE creator_name = %s ORDER BY strategy_name",
+                "SELECT strategy_name FROM Strategy WHERE creator_name = %s ORDER BY strategy_name",
                 (creator_name,),
             )
 
@@ -1017,12 +1028,12 @@ def search_params(creator_name: str, query: str = "") -> list:
         cursor = connection.cursor()
         if query:
             cursor.execute(
-                "SELECT param_name FROM parameters WHERE creator_name = %s AND param_name LIKE %s ORDER BY param_name",
+                "SELECT param_name FROM Param WHERE creator_name = %s AND param_name LIKE %s ORDER BY param_name",
                 (creator_name, f"{query}%"),
             )
         else:
             cursor.execute(
-                "SELECT param_name FROM parameters WHERE creator_name = %s ORDER BY param_name",
+                "SELECT param_name FROM Param WHERE creator_name = %s ORDER BY param_name",
                 (creator_name,),
             )
 
@@ -1044,12 +1055,12 @@ def search_indicators(creator_name: str, query: str = "") -> list:
         cursor = connection.cursor()
         if query:
             cursor.execute(
-                "SELECT indicator_name FROM indicators WHERE creator_name = %s AND indicator_name LIKE %s ORDER BY indicator_name",
+                "SELECT indicator_name FROM Indicator WHERE creator_name = %s AND indicator_name LIKE %s ORDER BY indicator_name",
                 (creator_name, f"{query}%"),
             )
         else:
             cursor.execute(
-                "SELECT indicator_name FROM indicators WHERE creator_name = %s ORDER BY indicator_name",
+                "SELECT indicator_name FROM Indicator WHERE creator_name = %s ORDER BY indicator_name",
                 (creator_name,),
             )
 
