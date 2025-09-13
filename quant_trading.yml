@@ -7,7 +7,10 @@ dependencies:
   - ipykernel
   - pip:
       - tushare
-      - pymysql
+      - pymysql==1.0.3
       - cryptography
       - backtrader
       - matplotlib
+      - Flask-Cors==3.0.10
+      - PyJWT==2.6.0
+      - Werkzeug==2.2.3

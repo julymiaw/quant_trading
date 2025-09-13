@@ -1,0 +1,976 @@
+<template>
+  <div class="strategy-detail-container">
+    <!-- 页面标题和操作按钮 -->
+    <div class="page-header">
+      <div class="header-left">
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item><el-link @click="goBack">策略管理</el-link></el-breadcrumb-item>
+          <el-breadcrumb-item>{{ strategy.strategy_name }}</el-breadcrumb-item>
+        </el-breadcrumb>
+        <h1>{{ strategy.strategy_name }}</h1>
+      </div>
+      <div class="header-actions" v-if="canEdit">
+        <el-button type="primary" @click="showSaveCodeDialog">
+          <el-icon><Edit /></el-icon>
+          编辑代码
+        </el-button>
+        <el-button type="success" @click="backtestStrategy">
+          <el-icon><DataAnalysis /></el-icon>
+          回测
+        </el-button>
+      </div>
+    </div>
+    
+    <!-- 策略基本信息卡片 -->
+    <el-card class="strategy-info-card" :loading="loading">
+      <template #header>
+        <div class="card-header">
+          <span>策略基本信息</span>
+          <el-button v-if="canEdit" type="text" @click="editBasicInfo">
+            <el-icon><Edit /></el-icon>
+            编辑
+          </el-button>
+        </div>
+      </template>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>创建者：</label>
+          <span>{{ strategy.creator_name }}</span>
+        </div>
+        <div class="info-item">
+          <label>是否公开：</label>
+          <el-switch v-model="strategy.public" disabled />
+        </div>
+        <div class="info-item">
+          <label>生效范围：</label>
+          <el-tag
+            :type="
+              strategy.scope_type === 'all' ? 'primary'
+                : strategy.scope_type === 'single_stock' ? 'success'
+                : 'warning'
+            "
+          >
+            {{ scopeTypeText }}
+          </el-tag>
+        </div>
+        <div class="info-item" v-if="strategy.scope_type !== 'all'">
+          <label>股票/指数ID：</label>
+          <span>{{ strategy.scope_id }}</span>
+        </div>
+        <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
+          <label>持仓数量：</label>
+          <span>{{ strategy.position_count }}只</span>
+        </div>
+        <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
+          <label>调仓间隔：</label>
+          <span>{{ strategy.rebalance_interval }}天</span>
+        </div>
+        <div class="info-item">
+          <label>买入手续费率：</label>
+          <span>{{ (strategy.buy_fee_rate * 100).toFixed(3) }}%</span>
+        </div>
+        <div class="info-item">
+          <label>卖出手续费率：</label>
+          <span>{{ (strategy.sell_fee_rate * 100).toFixed(3) }}%</span>
+        </div>
+      </div>
+      <div class="info-item full-width">
+        <label>策略描述：</label>
+        <div class="strategy-desc">{{ strategy.strategy_desc }}</div>
+      </div>
+      <div class="info-item">
+        <label>创建时间：</label>
+        <span>{{ strategy.create_time }}</span>
+      </div>
+      <div class="info-item">
+        <label>更新时间：</label>
+        <span>{{ strategy.update_time }}</span>
+      </div>
+    </el-card>
+    
+    <!-- 策略代码展示 -->
+    <el-card class="strategy-code-card" :loading="loading" style="margin-top: 20px;">
+      <template #header>
+        <div class="card-header">
+          <span>选股函数代码</span>
+        </div>
+      </template>
+      <el-scrollbar height="400px" class="code-scrollbar">
+        <pre class="code-block">{{ strategy.select_func }}</pre>
+      </el-scrollbar>
+    </el-card>
+    
+    <!-- 风险控制函数代码 -->
+    <el-card class="strategy-code-card" :loading="loading" style="margin-top: 20px;" v-if="strategy.risk_control_func">
+      <template #header>
+        <div class="card-header">
+          <span>风险控制函数代码</span>
+        </div>
+      </template>
+      <el-scrollbar height="400px" class="code-scrollbar">
+        <pre class="code-block">{{ strategy.risk_control_func }}</pre>
+      </el-scrollbar>
+    </el-card>
+    
+    <!-- 参数列表 -->
+    <el-card class="strategy-params-card" :loading="loading" style="margin-top: 20px;">
+      <template #header>
+        <div class="card-header">
+          <span>参数列表</span>
+          <el-button v-if="canEdit" type="primary" @click="showAddParamDialog">
+            <el-icon><Plus /></el-icon>
+            添加参数
+          </el-button>
+        </div>
+      </template>
+      <el-table
+        :data="strategyParams"
+        style="width: 100%"
+        border
+      >
+        <el-table-column prop="param_id" label="参数ID" width="150" />
+        <el-table-column prop="data_id" label="数据来源ID" width="200" />
+        <el-table-column prop="param_type" label="参数类型" width="120">
+          <template #default="scope">
+            <el-tag :type="scope.row.param_type === 'table' ? 'primary' : 'success'">
+              {{ scope.row.param_type === 'table' ? '数据表' : '指标' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
+        <el-table-column prop="post_period" label="向后预测天数" width="150" />
+        <el-table-column prop="agg_func" label="聚合函数" width="120" />
+        <el-table-column label="操作" width="120" fixed="right" v-if="canEdit">
+          <template #default="scope">
+            <el-button type="danger" size="small" @click="removeParam(scope.row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="strategyParams.length === 0" class="empty-params">
+        <el-empty description="暂无参数" />
+      </div>
+    </el-card>
+    
+    <!-- 添加参数弹窗 -->
+    <el-dialog
+      v-model="addParamDialogVisible"
+      title="添加参数"
+      width="600px"
+      :before-close="handleAddParamDialogClose"
+    >
+      <el-form
+        ref="paramFormRef"
+        :model="paramForm"
+        :rules="paramRules"
+        label-width="120px"
+      >
+        <el-form-item label="参数ID" prop="param_id">
+          <el-input v-model="paramForm.param_id" placeholder="请输入参数ID" />
+        </el-form-item>
+        <el-form-item label="数据来源ID" prop="data_id">
+          <el-autocomplete
+            v-model="paramForm.data_id"
+            :fetch-suggestions="queryDataSources"
+            placeholder="请输入数据来源ID"
+            :trigger-on-focus="false"
+            style="width: 100%"
+            :remote="true"
+          />
+        </el-form-item>
+        <el-form-item label="参数类型" prop="param_type">
+          <el-select v-model="paramForm.param_type" placeholder="请选择参数类型">
+            <el-option label="数据表" value="table" />
+            <el-option label="指标" value="indicator" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="向前取历史天数" prop="pre_period">
+          <el-input-number v-model="paramForm.pre_period" :min="0" :max="365" />
+        </el-form-item>
+        <el-form-item label="向后预测天数" prop="post_period">
+          <el-input-number v-model="paramForm.post_period" :min="0" :max="365" />
+        </el-form-item>
+        <el-form-item label="聚合函数" prop="agg_func">
+          <el-select v-model="paramForm.agg_func" placeholder="请选择聚合函数" clearable>
+            <el-option label="SMA" value="SMA" />
+            <el-option label="EMA" value="EMA" />
+            <el-option label="MAX" value="MAX" />
+            <el-option label="MIN" value="MIN" />
+            <el-option label="SUM" value="SUM" />
+            <el-option label="AVG" value="AVG" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleAddParamDialogClose">取消</el-button>
+          <el-button type="primary" @click="addParam">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+    
+    <!-- 编辑基本信息弹窗 -->
+    <el-dialog
+      v-model="editBasicInfoDialogVisible"
+      title="编辑基本信息"
+      width="600px"
+      :before-close="handleEditBasicInfoDialogClose"
+    >
+      <el-form
+        ref="editBasicInfoFormRef"
+        :model="editBasicInfoForm"
+        :rules="editBasicInfoRules"
+        label-width="120px"
+      >
+        <el-form-item label="策略名称" prop="strategy_name">
+          <el-input v-model="editBasicInfoForm.strategy_name" placeholder="请输入策略名称" />
+        </el-form-item>
+        <el-form-item label="是否公开" prop="public">
+          <el-switch v-model="editBasicInfoForm.public" />
+        </el-form-item>
+        <el-form-item label="策略描述" prop="strategy_desc">
+          <el-input v-model="editBasicInfoForm.strategy_desc" type="textarea" placeholder="请输入策略描述" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleEditBasicInfoDialogClose">取消</el-button>
+          <el-button type="primary" @click="saveBasicInfo">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+    
+    <!-- 编辑代码弹窗 -->
+    <el-dialog
+      v-model="editCodeDialogVisible"
+      title="编辑策略代码"
+      width="800px"
+      :before-close="handleEditCodeDialogClose"
+    >
+      <div class="code-editor-tabs">
+        <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
+          <el-tab-pane label="选股函数" name="select_func">
+            <el-input v-model="editCodeForm.select_func" type="textarea" :rows="15" placeholder="请输入选股函数代码" />
+          </el-tab-pane>
+          <el-tab-pane label="风险控制函数" name="risk_control_func">
+            <el-input v-model="editCodeForm.risk_control_func" type="textarea" :rows="15" placeholder="请输入风险控制函数代码" />
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleEditCodeDialogClose">取消</el-button>
+          <el-button type="primary" @click="saveCode">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+    
+    <!-- 回测弹窗 -->
+    <el-dialog
+      v-model="backtestDialogVisible"
+      title="策略回测"
+      width="800px"
+      :before-close="handleBacktestDialogClose"
+    >
+      <el-form
+        ref="backtestFormRef"
+        :model="backtestForm"
+        :rules="backtestRules"
+        label-width="120px"
+      >
+        <el-form-item label="开始日期" prop="start_date">
+          <el-date-picker
+            v-model="backtestForm.start_date"
+            type="date"
+            placeholder="选择开始日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="结束日期" prop="end_date">
+          <el-date-picker
+            v-model="backtestForm.end_date"
+            type="date"
+            placeholder="选择结束日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="初始资金(元)" prop="initial_cash">
+          <el-input-number v-model="backtestForm.initial_cash" :min="1000" :max="10000000" :step="1000" />
+        </el-form-item>
+        <el-form-item label="佣金费率" prop="commission_rate">
+          <el-input-number v-model="backtestForm.commission_rate" :min="0" :max="0.1" :step="0.0001" />
+        </el-form-item>
+        <el-form-item label="滑点率" prop="slippage_rate">
+          <el-input-number v-model="backtestForm.slippage_rate" :min="0" :max="0.1" :step="0.0001" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleBacktestDialogClose">取消</el-button>
+          <el-button type="primary" @click="confirmBacktest">开始回测</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Edit, DataAnalysis, Plus } from '@element-plus/icons-vue'
+import axios from 'axios'
+
+export default {
+  name: 'StrategyDetail',
+  components: {
+    Edit,
+    DataAnalysis,
+    Plus
+  },
+  setup() {
+    const router = useRouter()
+    const route = useRoute()
+    const loading = ref(false)
+    
+    // 策略数据
+    const strategy = reactive({
+      creator_name: '',
+      strategy_name: '',
+      public: true,
+      scope_type: 'all',
+      scope_id: '',
+      position_count: 0,
+      rebalance_interval: 0,
+      buy_fee_rate: 0.001,
+      sell_fee_rate: 0.001,
+      strategy_desc: '',
+      select_func: '',
+      risk_control_func: '',
+      create_time: '',
+      update_time: ''
+    })
+    
+    // 策略参数列表
+    const strategyParams = ref([])
+    
+    // 获取用户信息
+    const getUserInfo = () => {
+      const storedUserInfo = localStorage.getItem('userInfo')
+      return storedUserInfo ? JSON.parse(storedUserInfo) : null
+    }
+    
+    // 判断是否可以编辑策略
+    const canEdit = computed(() => {
+      const userInfo = getUserInfo()
+      return userInfo && strategy.creator_name === userInfo.user_name
+    })
+    
+    // 生效范围文本
+    const scopeTypeText = computed(() => {
+      switch (strategy.scope_type) {
+        case 'all':
+          return '全部'
+        case 'single_stock':
+          return '单只股票'
+        case 'index':
+          return '指数成分股'
+        default:
+          return '未知'
+      }
+    })
+    
+    // 获取策略详情
+    const fetchStrategyDetail = async () => {
+      try {
+        loading.value = true
+        const { creatorName, strategyName } = route.params
+        
+        // 这里使用模拟数据，实际开发中应替换为真实的API调用
+        // const response = await axios.get(`/api/strategies/${creatorName}/${strategyName}`)
+        
+        // 模拟策略详情数据
+        const mockStrategy = {
+          creator_name: creatorName,
+          strategy_name: strategyName,
+          public: true,
+          scope_type: 'all',
+          scope_id: '',
+          position_count: 3,
+          rebalance_interval: 5,
+          buy_fee_rate: 0.0003,
+          sell_fee_rate: 0.0013,
+          strategy_desc: '市值20-30亿，市值最小的3只股票',
+          select_func: `def select_stocks(context, data):\n    # 从市场中获取所有股票\n    all_stocks = data.get_all_securities('stock', '20200101').index\n    \n    # 筛选市值在20亿到30亿之间的股票\n    q = query(\n        valuation.code,\n        valuation.market_cap\n    ).filter(\n        valuation.market_cap > 20,\n        valuation.market_cap < 30\n    )\n    \n    # 获取查询结果并按市值排序\n    df = get_fundamentals(q, date='20200101')\n    df = df.sort_values('market_cap')\n    \n    # 返回市值最小的3只股票\n    return df['code'][:3].tolist()`,
+          risk_control_func: `def risk_control(context, data):\n    # 获取当前持仓\n    positions = context.portfolio.positions\n    \n    # 检查每个持仓股票\n    for stock in list(positions.keys()):\n        # 获取股票最新价格\n        price = data.current(stock, 'close')\n        \n        # 如果股票价格低于成本价的90%，卖出止损\n        if price < positions[stock].avg_cost * 0.9:\n            order_target_value(stock, 0)\n            log.info("止损卖出: %s, 价格: %s, 成本价: %s" % (stock, price, positions[stock].avg_cost))\n    \n    # 返回调整后的持仓\n    return list(context.portfolio.positions.keys())`,
+          create_time: '2025-09-01 00:00:00',
+          update_time: '2025-09-01 00:00:00'
+        }
+        
+        // 根据路由参数调整模拟数据
+        if (creatorName === 'test_user' && strategyName === '自定义动量策略') {
+          mockStrategy.creator_name = 'test_user'
+          mockStrategy.strategy_name = '自定义动量策略'
+          mockStrategy.public = false
+          mockStrategy.scope_type = 'index'
+          mockStrategy.scope_id = '000300.XSHG'
+          mockStrategy.position_count = 10
+          mockStrategy.rebalance_interval = 10
+          mockStrategy.strategy_desc = '选择沪深300指数中动量最强的10只股票'
+          mockStrategy.select_func = `def select_stocks(context, data):\n    # 获取沪深300指数成分股\n    index_stocks = get_index_stocks('000300.XSHG', date=context.current_dt.strftime('%Y%m%d'))\n    \n    # 计算过去20天的收益率\n    returns = {}  \n    for stock in index_stocks:\n        try:\n            # 获取过去20天的收盘价\n            prices = attribute_history(stock, 20, '1d', ['close'], skip_paused=True)\n            if len(prices) >= 10:\n                # 计算收益率 = (最新价 - 20天前价格) / 20天前价格\n                returns[stock] = (prices['close'][-1] - prices['close'][0]) / prices['close'][0]\n        except:\n            pass\n    \n    # 按收益率排序，选择前10只\n    sorted_stocks = sorted(returns.items(), key=lambda x: x[1], reverse=True)\n    selected_stocks = [stock for stock, _ in sorted_stocks[:10]]\n    \n    return selected_stocks`
+          mockStrategy.risk_control_func = ''
+          mockStrategy.create_time = '2025-09-10 10:00:00'
+          mockStrategy.update_time = '2025-09-10 10:00:00'
+        }
+        
+        // 更新策略数据
+        Object.assign(strategy, mockStrategy)
+        
+        // 获取策略参数
+        fetchStrategyParams()
+      } catch (error) {
+        console.error('获取策略详情失败:', error)
+        ElMessage.error('获取策略详情失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 获取策略参数
+    const fetchStrategyParams = async () => {
+      try {
+        // 这里使用模拟数据，实际开发中应替换为真实的API调用
+        // const response = await axios.get(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`)
+        
+        // 模拟策略参数数据
+        const mockParams = [
+          {
+            param_id: 'market_cap',
+            data_id: 'valuation.market_cap',
+            param_type: 'table',
+            pre_period: 0,
+            post_period: 0,
+            agg_func: null
+          },
+          {
+            param_id: 'close_price',
+            data_id: 'daily.close',
+            param_type: 'table',
+            pre_period: 20,
+            post_period: 0,
+            agg_func: 'AVG'
+          }
+        ]
+        
+        strategyParams.value = mockParams
+      } catch (error) {
+        console.error('获取策略参数失败:', error)
+        ElMessage.error('获取策略参数失败，请重试')
+      }
+    }
+    
+    // 返回上一页
+    const goBack = () => {
+      router.push('/strategy-list')
+    }
+    
+    // 编辑基本信息
+    const editBasicInfo = () => {
+      // 填充编辑表单
+      Object.assign(editBasicInfoForm, {
+        strategy_name: strategy.strategy_name,
+        public: strategy.public,
+        strategy_desc: strategy.strategy_desc
+      })
+      
+      editBasicInfoDialogVisible.value = true
+    }
+    
+    // 保存基本信息
+    const saveBasicInfo = async () => {
+      try {
+        // 表单验证
+        await editBasicInfoFormRef.value.validate()
+        
+        loading.value = true
+        
+        // 这里使用模拟保存，实际开发中应替换为真实的API调用
+        // await axios.put(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/basic-info`, editBasicInfoForm)
+        
+        // 更新策略数据
+        Object.assign(strategy, editBasicInfoForm)
+        strategy.update_time = new Date().toLocaleString('zh-CN')
+        
+        ElMessage.success('基本信息更新成功')
+        editBasicInfoDialogVisible.value = false
+      } catch (error) {
+        console.error('保存基本信息失败:', error)
+        ElMessage.error('保存基本信息失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 显示编辑代码弹窗
+    const showSaveCodeDialog = () => {
+      // 填充编辑表单
+      Object.assign(editCodeForm, {
+        select_func: strategy.select_func,
+        risk_control_func: strategy.risk_control_func
+      })
+      
+      editCodeDialogVisible.value = true
+    }
+    
+    // 保存代码
+    const saveCode = async () => {
+      try {
+        loading.value = true
+        
+        // 这里使用模拟保存，实际开发中应替换为真实的API调用
+        // await axios.put(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/code`, editCodeForm)
+        
+        // 更新策略数据
+        Object.assign(strategy, editCodeForm)
+        strategy.update_time = new Date().toLocaleString('zh-CN')
+        
+        ElMessage.success('策略代码更新成功')
+        editCodeDialogVisible.value = false
+      } catch (error) {
+        console.error('保存策略代码失败:', error)
+        ElMessage.error('保存策略代码失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 显示添加参数弹窗
+    const showAddParamDialog = () => {
+      // 重置表单
+      Object.assign(paramForm, {
+        param_id: '',
+        data_id: '',
+        param_type: 'table',
+        pre_period: 0,
+        post_period: 0,
+        agg_func: null
+      })
+      
+      addParamDialogVisible.value = true
+    }
+    
+    // 查询数据源
+    const queryDataSources = (queryString, callback) => {
+      // 模拟数据源列表
+      const dataSources = [
+        'valuation.market_cap',
+        'valuation.pe_ratio',
+        'valuation.pb_ratio',
+        'daily.open',
+        'daily.close',
+        'daily.high',
+        'daily.low',
+        'daily.volume',
+        'daily.amount',
+        'indicator.MACD',
+        'indicator.KDJ',
+        'indicator.RSI'
+      ]
+      
+      // 根据查询字符串过滤
+      const results = queryString
+        ? dataSources.filter(source => source.toLowerCase().includes(queryString.toLowerCase()))
+        : dataSources
+      
+      // 格式化为autocomplete需要的格式
+      const suggestions = results.map(source => ({
+        value: source
+      }))
+      
+      callback(suggestions)
+    }
+    
+    // 添加参数
+    const addParam = async () => {
+      try {
+        // 表单验证
+        await paramFormRef.value.validate()
+        
+        loading.value = true
+        
+        // 检查参数ID是否已存在
+        const exists = strategyParams.value.some(p => p.param_id === paramForm.param_id)
+        if (exists) {
+          ElMessage.error('参数ID已存在，请使用其他ID')
+          loading.value = false
+          return
+        }
+        
+        // 这里使用模拟保存，实际开发中应替换为真实的API调用
+        // await axios.post(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`, paramForm)
+        
+        // 添加参数到列表
+        strategyParams.value.push({ ...paramForm })
+        
+        ElMessage.success('参数添加成功')
+        addParamDialogVisible.value = false
+      } catch (error) {
+        console.error('添加参数失败:', error)
+        ElMessage.error('添加参数失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 删除参数
+    const removeParam = (param) => {
+      ElMessageBox.confirm(
+        `确定要删除参数"${param.param_id}"吗？`,
+        '确认删除',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(async () => {
+        try {
+          loading.value = true
+          
+          // 这里使用模拟删除，实际开发中应替换为真实的API调用
+          // await axios.delete(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params/${param.param_id}`)
+          
+          // 从列表中删除参数
+          strategyParams.value = strategyParams.value.filter(p => p.param_id !== param.param_id)
+          
+          ElMessage.success('参数删除成功')
+        } catch (error) {
+          console.error('删除参数失败:', error)
+          ElMessage.error('删除参数失败，请重试')
+        } finally {
+          loading.value = false
+        }
+      }).catch(() => {
+        // 用户取消删除
+      })
+    }
+    
+    // 回测策略
+    const backtestStrategy = () => {
+      // 设置默认回测参数
+      const today = new Date()
+      const threeMonthsAgo = new Date()
+      threeMonthsAgo.setMonth(today.getMonth() - 3)
+      
+      Object.assign(backtestForm, {
+        start_date: threeMonthsAgo,
+        end_date: today,
+        initial_cash: 100000,
+        commission_rate: 0.0003,
+        slippage_rate: 0.0001
+      })
+      
+      backtestDialogVisible.value = true
+    }
+    
+    // 确认回测
+    const confirmBacktest = async () => {
+      try {
+        // 表单验证
+        await backtestFormRef.value.validate()
+        
+        loading.value = true
+        
+        // 这里使用模拟回测，实际开发中应替换为真实的API调用
+        // const response = await axios.post(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/backtest`, backtestForm)
+        
+        // 模拟回测成功
+        ElMessage.success('回测已开始，请在回测结果页面查看')
+        backtestDialogVisible.value = false
+        
+        // 跳转到回测结果页面
+        // router.push({ name: 'BacktestResult', params: { backtestId: response.data.backtest_id } })
+      } catch (error) {
+        console.error('回测失败:', error)
+        ElMessage.error('回测失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 标签切换处理
+    const handleTabChange = () => {
+      // 可以在这里添加标签切换时的逻辑
+    }
+    
+    // 弹窗关闭处理
+    const handleAddParamDialogClose = () => {
+      addParamDialogVisible.value = false
+      if (paramFormRef.value) {
+        paramFormRef.value.resetFields()
+      }
+    }
+    
+    const handleEditBasicInfoDialogClose = () => {
+      editBasicInfoDialogVisible.value = false
+      if (editBasicInfoFormRef.value) {
+        editBasicInfoFormRef.value.resetFields()
+      }
+    }
+    
+    const handleEditCodeDialogClose = () => {
+      editCodeDialogVisible.value = false
+    }
+    
+    const handleBacktestDialogClose = () => {
+      backtestDialogVisible.value = false
+      if (backtestFormRef.value) {
+        backtestFormRef.value.resetFields()
+      }
+    }
+    
+    // 弹窗相关状态和表单
+    const addParamDialogVisible = ref(false)
+    const editBasicInfoDialogVisible = ref(false)
+    const editCodeDialogVisible = ref(false)
+    const backtestDialogVisible = ref(false)
+    
+    // 添加参数表单
+    const paramFormRef = ref(null)
+    const paramForm = reactive({
+      param_id: '',
+      data_id: '',
+      param_type: 'table',
+      pre_period: 0,
+      post_period: 0,
+      agg_func: null
+    })
+    
+    const paramRules = {
+      param_id: [
+        { required: true, message: '请输入参数ID', trigger: 'blur' },
+        { min: 1, max: 50, message: '参数ID长度在 1 到 50 个字符', trigger: 'blur' }
+      ],
+      data_id: [
+        { required: true, message: '请输入数据来源ID', trigger: 'blur' }
+      ],
+      param_type: [
+        { required: true, message: '请选择参数类型', trigger: 'change' }
+      ],
+      pre_period: [
+        { required: true, message: '请输入向前取历史天数', trigger: 'change' },
+        { type: 'number', min: 0, message: '向前取历史天数不能小于0', trigger: 'change' }
+      ],
+      post_period: [
+        { required: true, message: '请输入向后预测天数', trigger: 'change' },
+        { type: 'number', min: 0, message: '向后预测天数不能小于0', trigger: 'change' }
+      ]
+    }
+    
+    // 编辑基本信息表单
+    const editBasicInfoFormRef = ref(null)
+    const editBasicInfoForm = reactive({
+      strategy_name: '',
+      public: true,
+      strategy_desc: ''
+    })
+    
+    const editBasicInfoRules = {
+      strategy_name: [
+        { required: true, message: '请输入策略名称', trigger: 'blur' },
+        { min: 1, max: 100, message: '策略名称长度在 1 到 100 个字符', trigger: 'blur' }
+      ]
+    }
+    
+    // 编辑代码表单
+    const activeTab = ref('select_func')
+    const editCodeForm = reactive({
+      select_func: '',
+      risk_control_func: ''
+    })
+    
+    // 回测表单
+    const backtestFormRef = ref(null)
+    const backtestForm = reactive({
+      start_date: '',
+      end_date: '',
+      initial_cash: 0,
+      commission_rate: 0,
+      slippage_rate: 0
+    })
+    
+    const backtestRules = {
+      start_date: [
+        { required: true, message: '请选择开始日期', trigger: 'change' }
+      ],
+      end_date: [
+        { required: true, message: '请选择结束日期', trigger: 'change' },
+        {
+          validator: (rule, value, callback) => {
+            if (value && backtestForm.start_date && new Date(value) < new Date(backtestForm.start_date)) {
+              callback(new Error('结束日期不能早于开始日期'))
+            } else {
+              callback()
+            }
+          },
+          trigger: 'change'
+        }
+      ],
+      initial_cash: [
+        { required: true, message: '请输入初始资金', trigger: 'change' },
+        { type: 'number', min: 1000, message: '初始资金不能小于1000元', trigger: 'change' }
+      ],
+      commission_rate: [
+        { required: true, message: '请输入佣金费率', trigger: 'change' },
+        { type: 'number', min: 0, max: 0.1, message: '佣金费率应在0到0.1之间', trigger: 'change' }
+      ],
+      slippage_rate: [
+        { required: true, message: '请输入滑点率', trigger: 'change' },
+        { type: 'number', min: 0, max: 0.1, message: '滑点率应在0到0.1之间', trigger: 'change' }
+      ]
+    }
+    
+    onMounted(() => {
+      fetchStrategyDetail()
+    })
+    
+    return {
+      loading,
+      strategy,
+      strategyParams,
+      canEdit,
+      scopeTypeText,
+      addParamDialogVisible,
+      editBasicInfoDialogVisible,
+      editCodeDialogVisible,
+      backtestDialogVisible,
+      paramFormRef,
+      paramForm,
+      paramRules,
+      editBasicInfoFormRef,
+      editBasicInfoForm,
+      editBasicInfoRules,
+      activeTab,
+      editCodeForm,
+      backtestFormRef,
+      backtestForm,
+      backtestRules,
+      fetchStrategyDetail,
+      fetchStrategyParams,
+      goBack,
+      editBasicInfo,
+      saveBasicInfo,
+      showSaveCodeDialog,
+      saveCode,
+      showAddParamDialog,
+      queryDataSources,
+      addParam,
+      removeParam,
+      backtestStrategy,
+      confirmBacktest,
+      handleTabChange,
+      handleAddParamDialogClose,
+      handleEditBasicInfoDialogClose,
+      handleEditCodeDialogClose,
+      handleBacktestDialogClose
+    }
+  }
+}
+</script>
+
+<style scoped>
+.strategy-detail-container {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-left h1 {
+  margin: 10px 0 0 0;
+  color: #333;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+}
+
+.header-actions .el-button {
+  margin-left: 10px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+}
+
+.info-item.full-width {
+  grid-column: 1 / -1;
+  align-items: flex-start;
+}
+
+.info-item label {
+  font-weight: 500;
+  margin-right: 10px;
+  min-width: 100px;
+}
+
+.strategy-desc {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-scrollbar {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.code-block {
+  margin: 0;
+  padding: 15px;
+  background-color: #fafafa;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.empty-params {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.code-editor-tabs {
+  margin-top: 20px;
+}
+</style>
