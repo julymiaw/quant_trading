@@ -12,7 +12,7 @@
           <el-option label="系统策略" value="system" />
           <el-option label="公开策略" value="public" />
         </el-select>
-        <el-button type="primary" @click="showAddStrategyDialog">
+        <el-button type="primary" @click="addNewStrategy">
           <el-icon><Plus /></el-icon>
           添加策略
         </el-button>
@@ -111,7 +111,7 @@
             <el-button
               type="primary"
               size="small"
-              @click="editStrategy(scope.row)"
+              @click="goToStrategyDetail(scope.row)"
               v-if="isCurrentUserCreator(scope.row)">
               编辑
             </el-button>
@@ -144,103 +144,6 @@
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange" />
     </div>
-
-    <!-- 添加/编辑策略弹窗 -->
-    <el-dialog
-      v-model="strategyDialogVisible"
-      :title="isEditMode ? '编辑策略' : '添加策略'"
-      width="600px"
-      :before-close="handleStrategyDialogClose">
-      <el-form
-        ref="strategyFormRef"
-        :model="strategyForm"
-        :rules="strategyRules"
-        label-width="120px">
-        <el-form-item label="策略名称" prop="strategy_name">
-          <el-input
-            v-model="strategyForm.strategy_name"
-            placeholder="请输入策略名称" />
-        </el-form-item>
-        <el-form-item label="是否公开" prop="public">
-          <el-switch v-model="strategyForm.public" />
-        </el-form-item>
-        <el-form-item label="生效范围" prop="scope_type">
-          <el-select
-            v-model="strategyForm.scope_type"
-            placeholder="请选择生效范围">
-            <el-option label="全部" value="all" />
-            <el-option label="单只股票" value="single_stock" />
-            <el-option label="指数成分股" value="index" />
-          </el-select>
-        </el-form-item>
-        <el-form-item
-          v-if="strategyForm.scope_type !== 'all'"
-          label="股票/指数ID"
-          prop="scope_id">
-          <el-input
-            v-model="strategyForm.scope_id"
-            placeholder="请输入股票代码或指数代码" />
-        </el-form-item>
-        <el-form-item
-          v-if="strategyForm.scope_type !== 'single_stock'"
-          label="持仓数量"
-          prop="position_count">
-          <el-input-number
-            v-model="strategyForm.position_count"
-            :min="1"
-            :max="100" />
-        </el-form-item>
-        <el-form-item
-          v-if="strategyForm.scope_type !== 'single_stock'"
-          label="调仓间隔(天)"
-          prop="rebalance_interval">
-          <el-input-number
-            v-model="strategyForm.rebalance_interval"
-            :min="1"
-            :max="365" />
-        </el-form-item>
-        <el-form-item label="买入手续费率" prop="buy_fee_rate">
-          <el-input-number
-            v-model="strategyForm.buy_fee_rate"
-            :min="0"
-            :max="0.1"
-            :step="0.0001" />
-        </el-form-item>
-        <el-form-item label="卖出手续费率" prop="sell_fee_rate">
-          <el-input-number
-            v-model="strategyForm.sell_fee_rate"
-            :min="0"
-            :max="0.1"
-            :step="0.0001" />
-        </el-form-item>
-        <el-form-item label="策略描述" prop="strategy_desc">
-          <el-input
-            v-model="strategyForm.strategy_desc"
-            type="textarea"
-            placeholder="请输入策略描述" />
-        </el-form-item>
-        <el-form-item label="选股函数" prop="select_func">
-          <el-input
-            v-model="strategyForm.select_func"
-            type="textarea"
-            :rows="8"
-            placeholder="请输入选股函数代码（Python）" />
-        </el-form-item>
-        <el-form-item label="风控函数" prop="risk_control_func">
-          <el-input
-            v-model="strategyForm.risk_control_func"
-            type="textarea"
-            :rows="6"
-            placeholder="请输入风险控制函数代码（可选）" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="handleStrategyDialogClose">取消</el-button>
-          <el-button type="primary" @click="saveStrategy">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -268,88 +171,6 @@ export default {
     const currentPage = ref(1);
     const pageSize = ref(10);
     const total = ref(0);
-
-    // 弹窗相关状态
-    const strategyDialogVisible = ref(false);
-    const isEditMode = ref(false);
-    const editingStrategy = ref(null);
-    const strategyFormRef = ref(null);
-
-    // 策略表单数据
-    const strategyForm = reactive({
-      strategy_name: "",
-      public: true,
-      scope_type: "all",
-      scope_id: "",
-      position_count: 5,
-      rebalance_interval: 5,
-      buy_fee_rate: 0.001,
-      sell_fee_rate: 0.001,
-      strategy_desc: "",
-      select_func: "",
-      risk_control_func: "",
-    });
-
-    // 表单验证规则
-    const strategyRules = {
-      strategy_name: [
-        { required: true, message: "请输入策略名称", trigger: "blur" },
-        {
-          min: 1,
-          max: 100,
-          message: "策略名称长度在 1 到 100 个字符",
-          trigger: "blur",
-        },
-      ],
-      scope_type: [
-        { required: true, message: "请选择生效范围", trigger: "change" },
-      ],
-      select_func: [
-        { required: true, message: "请输入选股函数代码", trigger: "blur" },
-      ],
-      scope_id: [
-        {
-          required: true,
-          message: "请输入股票代码或指数代码",
-          trigger: "blur",
-          validator: (rule, value, callback) => {
-            if (strategyForm.scope_type !== "all" && !value) {
-              callback(new Error("请输入股票代码或指数代码"));
-            } else {
-              callback();
-            }
-          },
-        },
-      ],
-      position_count: [
-        {
-          required: true,
-          message: "请输入持仓数量",
-          trigger: "change",
-          validator: (rule, value, callback) => {
-            if (strategyForm.scope_type !== "single_stock" && !value) {
-              callback(new Error("请输入持仓数量"));
-            } else {
-              callback();
-            }
-          },
-        },
-      ],
-      rebalance_interval: [
-        {
-          required: true,
-          message: "请输入调仓间隔",
-          trigger: "change",
-          validator: (rule, value, callback) => {
-            if (strategyForm.scope_type !== "single_stock" && !value) {
-              callback(new Error("请输入调仓间隔"));
-            } else {
-              callback();
-            }
-          },
-        },
-      ],
-    };
 
     // 获取用户信息
     const getUserInfo = () => {
@@ -440,50 +261,134 @@ export default {
       });
     };
 
-    // 显示添加策略弹窗
-    const showAddStrategyDialog = () => {
-      isEditMode.value = false;
-      editingStrategy.value = null;
+    // 添加新策略（直接跳转到详情页面）
+    const addNewStrategy = async () => {
+      try {
+        loading.value = true;
 
-      // 重置表单
-      Object.assign(strategyForm, {
-        strategy_name: "",
-        public: true,
-        scope_type: "all",
-        scope_id: "",
-        position_count: 5,
-        rebalance_interval: 5,
-        buy_fee_rate: 0.001,
-        sell_fee_rate: 0.001,
-        strategy_desc: "",
-        select_func: "",
-        risk_control_func: "",
-      });
+        // 获取用户token
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-      strategyDialogVisible.value = true;
-    };
+        // 获取用户信息
+        const userInfo = getUserInfo();
+        if (!userInfo) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-    // 编辑策略
-    const editStrategy = (strategy) => {
-      isEditMode.value = true;
-      editingStrategy.value = strategy;
+        // 创建一个新的策略，使用默认值
+        const newStrategyData = {
+          strategy_name: `新策略_${Date.now()}`, // 使用时间戳确保唯一性
+          public: false, // 新策略默认不公开
+          scope_type: "all",
+          scope_id: "",
+          position_count: 5,
+          rebalance_interval: 5,
+          buy_fee_rate: 0.001,
+          sell_fee_rate: 0.001,
+          strategy_desc: "新创建的策略，请编辑详细信息",
+          select_func: `def select_func(candidates, params, position_count, current_holdings, date, context=None):
+    """
+    选股函数 - 根据策略逻辑选择要持有的股票
 
-      // 填充表单
-      Object.assign(strategyForm, {
-        strategy_name: strategy.strategy_name,
-        public: strategy.public,
-        scope_type: strategy.scope_type,
-        scope_id: strategy.scope_id || "",
-        position_count: strategy.position_count || 5,
-        rebalance_interval: strategy.rebalance_interval || 5,
-        buy_fee_rate: strategy.buy_fee_rate || 0.001,
-        sell_fee_rate: strategy.sell_fee_rate || 0.001,
-        strategy_desc: strategy.strategy_desc || "",
-        select_func: strategy.select_func || "",
-        risk_control_func: strategy.risk_control_func || "",
-      });
+    参数说明:
+    - candidates: 可选股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - position_count: 最大持仓股票数量
+    - current_holdings: 当前持仓股票列表
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
 
-      strategyDialogVisible.value = true;
+    返回值:
+    - 选中的股票列表（最多position_count只）
+    """
+    # 示例：选择市值最小的position_count只股票
+    if not candidates:
+        return []
+
+    # 获取股票市值数据
+    market_values = []
+    for stock in candidates:
+        if f"system.total_mv" in params.get(stock, {}):
+            mv = params[stock]["system.total_mv"]
+            market_values.append((stock, mv))
+
+    # 按市值从小到大排序，选择最小的position_count只
+    market_values.sort(key=lambda x: x[1])
+    selected = [stock for stock, _ in market_values[:position_count]]
+
+    return selected`,
+          risk_control_func: `def risk_control_func(current_holdings, params, date, context=None):
+    """
+    风险控制函数 - 对当前持仓进行风险控制
+
+    参数说明:
+    - current_holdings: 当前持仓股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
+
+    返回值:
+    - 调整后的持仓股票列表（移除了需要卖出的股票）
+    """
+    if not current_holdings:
+        return []
+
+    sell_list = []
+
+    for stock in current_holdings:
+        stock_params = params.get(stock, {})
+
+        # 示例风控逻辑：EMA60线下穿时卖出
+        if "system.ema_60" in stock_params and "system.close" in stock_params:
+            ema_60 = stock_params["system.ema_60"]
+            close_price = stock_params["system.close"]
+
+            if close_price < ema_60:
+                sell_list.append(stock)
+
+    # 返回剔除卖出股票后的持仓列表
+    return [stock for stock in current_holdings if stock not in sell_list]`,
+        };
+
+        // 调用API创建新策略
+        const response = await axios.post(
+          "http://localhost:5000/api/strategies",
+          newStrategyData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.data.code === 200) {
+          ElMessage.success("新策略创建成功，正在跳转到编辑页面...");
+
+          // 跳转到新创建的策略详情页面
+          router.push({
+            name: "StrategyDetail",
+            params: {
+              creatorName: userInfo.user_name,
+              strategyName: newStrategyData.strategy_name,
+            },
+          });
+        } else {
+          throw new Error(response.data.message || "创建策略失败");
+        }
+      } catch (error) {
+        console.error("创建策略失败:", error);
+        ElMessage.error(
+          error.response?.data?.message || "创建策略失败，请重试"
+        );
+      } finally {
+        loading.value = false;
+      }
     };
 
     // 删除策略
@@ -540,41 +445,8 @@ export default {
     };
 
     // 复制策略
-    const copyStrategy = (strategy) => {
-      const userInfo = getUserInfo();
-      if (!userInfo) {
-        ElMessage.error("请先登录");
-        return;
-      }
-
-      // 重置表单
-      Object.assign(strategyForm, {
-        strategy_name: `复制_${strategy.strategy_name}`,
-        public: false, // 默认不公开
-        scope_type: strategy.scope_type,
-        scope_id: strategy.scope_id || "",
-        position_count: strategy.position_count || 5,
-        rebalance_interval: strategy.rebalance_interval || 5,
-        buy_fee_rate: strategy.buy_fee_rate || 0.001,
-        sell_fee_rate: strategy.sell_fee_rate || 0.001,
-        strategy_desc: strategy.strategy_desc || "",
-        select_func: strategy.select_func || "",
-        risk_control_func: strategy.risk_control_func || "",
-      });
-
-      isEditMode.value = false;
-      editingStrategy.value = null;
-      strategyDialogVisible.value = true;
-
-      ElMessage.info("已复制策略，您可以修改后保存");
-    };
-
-    // 保存策略
-    const saveStrategy = async () => {
+    const copyStrategy = async (strategy) => {
       try {
-        // 表单验证
-        await strategyFormRef.value.validate();
-
         loading.value = true;
 
         // 获取用户token
@@ -584,63 +456,127 @@ export default {
           return;
         }
 
-        // 准备提交的数据
-        const submitData = {
-          ...strategyForm,
+        // 获取用户信息
+        const userInfo = getUserInfo();
+        if (!userInfo) {
+          ElMessage.error("请先登录");
+          return;
+        }
+
+        // 创建复制的策略，使用原策略的数据
+        const copiedStrategyData = {
+          strategy_name: `复制_${strategy.strategy_name}_${Date.now()}`, // 使用时间戳确保唯一性
+          public: false, // 复制的策略默认不公开
+          scope_type: strategy.scope_type,
+          scope_id: strategy.scope_id || "",
+          position_count: strategy.position_count || 5,
+          rebalance_interval: strategy.rebalance_interval || 5,
+          buy_fee_rate: strategy.buy_fee_rate || 0.001,
+          sell_fee_rate: strategy.sell_fee_rate || 0.001,
+          strategy_desc: `复制自 ${strategy.strategy_name} - ${
+            strategy.strategy_desc || ""
+          }`,
+          select_func:
+            strategy.select_func ||
+            `def select_func(candidates, params, position_count, current_holdings, date, context=None):
+    """
+    选股函数 - 根据策略逻辑选择要持有的股票
+
+    参数说明:
+    - candidates: 可选股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - position_count: 最大持仓股票数量
+    - current_holdings: 当前持仓股票列表
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
+
+    返回值:
+    - 选中的股票列表（最多position_count只）
+    """
+    # 示例：选择市值最小的position_count只股票
+    if not candidates:
+        return []
+
+    # 获取股票市值数据
+    market_values = []
+    for stock in candidates:
+        if f"system.total_mv" in params.get(stock, {}):
+            mv = params[stock]["system.total_mv"]
+            market_values.append((stock, mv))
+
+    # 按市值从小到大排序，选择最小的position_count只
+    market_values.sort(key=lambda x: x[1])
+    selected = [stock for stock, _ in market_values[:position_count]]
+
+    return selected`,
+          risk_control_func:
+            strategy.risk_control_func ||
+            `def risk_control_func(current_holdings, params, date, context=None):
+    """
+    风险控制函数 - 对当前持仓进行风险控制
+
+    参数说明:
+    - current_holdings: 当前持仓股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
+
+    返回值:
+    - 调整后的持仓股票列表（移除了需要卖出的股票）
+    """
+    if not current_holdings:
+        return []
+
+    sell_list = []
+
+    for stock in current_holdings:
+        stock_params = params.get(stock, {})
+
+        # 示例风控逻辑：EMA60线下穿时卖出
+        if "system.ema_60" in stock_params and "system.close" in stock_params:
+            ema_60 = stock_params["system.ema_60"]
+            close_price = stock_params["system.close"]
+
+            if close_price < ema_60:
+                sell_list.append(stock)
+
+    # 返回剔除卖出股票后的持仓列表
+    return [stock for stock in current_holdings if stock not in sell_list]`,
         };
 
-        let response;
-        if (isEditMode.value) {
-          // 更新策略
-          response = await axios.put(
-            `http://localhost:5000/api/strategies/${editingStrategy.value.creator_name}/${editingStrategy.value.strategy_name}`,
-            submitData,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-        } else {
-          // 创建新策略
-          response = await axios.post(
-            "http://localhost:5000/api/strategies",
-            submitData,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-        }
+        // 调用API创建复制的策略
+        const response = await axios.post(
+          "http://localhost:5000/api/strategies",
+          copiedStrategyData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         if (response.data.code === 200) {
-          ElMessage.success(isEditMode.value ? "策略更新成功" : "策略创建成功");
-          strategyDialogVisible.value = false;
-          // 重新获取策略列表
-          await fetchStrategies();
+          ElMessage.success("策略复制成功，正在跳转到编辑页面...");
+
+          // 跳转到新复制的策略详情页面
+          router.push({
+            name: "StrategyDetail",
+            params: {
+              creatorName: userInfo.user_name,
+              strategyName: copiedStrategyData.strategy_name,
+            },
+          });
         } else {
-          throw new Error(response.data.message || "保存策略失败");
+          throw new Error(response.data.message || "复制策略失败");
         }
       } catch (error) {
-        console.error("保存策略失败:", error);
+        console.error("复制策略失败:", error);
         ElMessage.error(
-          error.response?.data?.message || "保存策略失败，请重试"
+          error.response?.data?.message || "复制策略失败，请重试"
         );
       } finally {
         loading.value = false;
-      }
-    };
-
-    // 处理策略弹窗关闭
-    const handleStrategyDialogClose = () => {
-      strategyDialogVisible.value = false;
-
-      // 重置表单
-      if (strategyFormRef.value) {
-        strategyFormRef.value.resetFields();
       }
     };
 
@@ -687,23 +623,14 @@ export default {
       currentPage,
       pageSize,
       total,
-      strategyDialogVisible,
-      isEditMode,
-      editingStrategy,
-      strategyFormRef,
-      strategyForm,
-      strategyRules,
       filteredStrategies,
       showScopeId,
       fetchStrategies,
       refreshStrategies,
       goToStrategyDetail,
-      showAddStrategyDialog,
-      editStrategy,
+      addNewStrategy,
       deleteStrategy,
       copyStrategy,
-      saveStrategy,
-      handleStrategyDialogClose,
       handleSizeChange,
       handleCurrentChange,
       isCurrentUserCreator,

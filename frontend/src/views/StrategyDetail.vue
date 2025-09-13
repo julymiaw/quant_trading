@@ -542,6 +542,15 @@ export default {
 
         if (response.data.code === 200) {
           Object.assign(strategy, response.data.data);
+
+          // 检查是否是新创建的策略（select_func为空），如果是则自动进入编辑模式
+          if (!strategy.select_func || strategy.select_func.trim() === "") {
+            // 延迟一点时间确保组件完全加载后再进入编辑模式
+            setTimeout(() => {
+              editBasicInfo();
+            }, 500);
+          }
+
           // 获取策略参数
           fetchStrategyParams();
         } else {
