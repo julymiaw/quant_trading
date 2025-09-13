@@ -16,6 +16,13 @@
           <p class="form-subtitle">加入量化交易选股系统</p>
         </div>
 
+        <!-- 注册提示消息 -->
+        <FormAlert
+          :visible="alert.visible"
+          :message="alert.message"
+          :type="alert.type"
+          @close="hideAlert" />
+
         <el-form
           ref="registerFormRef"
           :model="registerForm"
@@ -89,13 +96,30 @@ import { ref, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import axios from "axios";
+import FormAlert from "../components/FormAlert.vue";
+import { useFormState } from "../composables/useFormState.js";
 
 export default {
   name: "Register",
+  components: {
+    FormAlert,
+  },
   setup() {
     const router = useRouter();
     const registerFormRef = ref(null);
-    const loading = ref(false);
+
+    // 使用表单状态管理
+    const {
+      loading,
+      alert,
+      setLoading,
+      hideAlert,
+      showWarning,
+      showError,
+      showSuccess,
+      handleApiError,
+      handleValidationError,
+    } = useFormState();
 
     // 注册表单数据
     const registerForm = reactive({
@@ -161,43 +185,47 @@ export default {
     // 处理注册
     const handleRegister = async () => {
       try {
+        // 基本字段验证
         if (
           !registerForm.userName ||
           !registerForm.password ||
-          !registerForm.confirmPassword
+          !registerForm.confirmPassword ||
+          !registerForm.email
         ) {
-          ElMessage.warning("请填写完整信息");
+          showWarning("请填写完整的必填信息");
           return;
         }
 
+        // 密码确认验证
         if (registerForm.password !== registerForm.confirmPassword) {
-          ElMessage.warning("两次输入的密码不一致");
+          showWarning("两次输入的密码不一致");
           return;
         }
 
-        // 验证表单
-        await registerFormRef.value.validate();
+        // Element Plus表单验证
+        try {
+          await registerFormRef.value.validate();
+        } catch (validationError) {
+          handleValidationError(validationError);
+          return;
+        }
 
-        loading.value = true;
+        setLoading(true);
 
-        // 发送真实的注册请求，路径与baseURL配置匹配
+        // 发送注册请求
         const response = await axios.post("/auth/register", registerForm);
 
-        ElMessage.success(response.data.message || "注册成功");
+        showSuccess(response.data.message || "注册成功");
 
-        // 注册成功后跳转到登录页面
-        router.push("/login");
+        // 延迟跳转，让用户看到成功消息
+        setTimeout(() => {
+          router.push("/login");
+        }, 1500);
       } catch (error) {
         console.error("注册失败:", error);
-        if (error.name === "ValidationError") {
-          ElMessage.error("请检查表单信息");
-        } else {
-          ElMessage.error(
-            error.response?.data?.message || "注册失败，请稍后重试"
-          );
-        }
+        handleApiError(error, "注册失败，请稍后重试");
       } finally {
-        loading.value = false;
+        setLoading(false);
       }
     };
 
@@ -211,8 +239,10 @@ export default {
       registerForm,
       registerRules,
       loading,
+      alert,
       handleRegister,
       goToLogin,
+      hideAlert,
     };
   },
 };
