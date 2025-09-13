@@ -1,5 +1,13 @@
 <template>
-  <div class="strategy-list-container">
+  <div class="strategy-lis    <!-- 策略列表表格 -->
+    <div class="table-container">
+      <el-table
+        v-loading="loading"
+        :data="strategies"
+        style="width: 100%"
+        border
+        row-key="id"
+        height="100%">iner">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header">
       <h1>策略管理</h1>
@@ -109,7 +117,8 @@
           </el-button>
         </template>
       </el-table-column>
-    </el-table>
+      </el-table>
+    </div>
     
     <!-- 分页控件 -->
     <div class="pagination-container">
@@ -665,6 +674,10 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .page-header {
@@ -696,9 +709,17 @@ export default {
   width: 300px;
 }
 
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
 .pagination-container {
-  margin-top: 20px;
+  margin-top: auto;
   display: flex;
   justify-content: flex-end;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
 }
 </style>

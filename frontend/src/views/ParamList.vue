@@ -45,56 +45,62 @@
     </div>
 
     <!-- 参数列表表格 -->
-    <el-table
-      v-loading="loading"
-      :data="filteredParams"
-      style="width: 100%"
-      border
-      row-key="id">
-      <el-table-column prop="param_name" label="参数ID" width="150" />
-      <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
-      <el-table-column prop="param_type" label="参数类型" width="120">
-        <template #default="scope">
-          <el-tag
-            :type="scope.row.param_type === 'table' ? 'primary' : 'success'">
-            {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
-      <el-table-column prop="post_period" label="向后预测天数" width="150" />
-      <el-table-column prop="agg_func" label="聚合函数" width="120">
-        <template #default="scope">
-          <el-tag v-if="scope.row.agg_func" type="info">{{
-            scope.row.agg_func
-          }}</el-tag>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="creator_name" label="创建者" width="120" />
-      <el-table-column prop="create_time" label="创建时间" width="160" />
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="scope">
-          <el-button
-            type="primary"
-            size="small"
-            @click="editParam(scope.row)"
-            v-if="isCurrentUserCreator(scope.row)">
-            编辑
-          </el-button>
-          <el-button
-            type="danger"
-            size="small"
-            @click="deleteParam(scope.row)"
-            v-if="isCurrentUserCreator(scope.row)">
-            删除
-          </el-button>
-          <el-button type="default" size="small" @click="copyParam(scope.row)">
-            复制
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="table-container">
+      <el-table
+        v-loading="loading"
+        :data="filteredParams"
+        style="width: 100%"
+        border
+        row-key="id"
+        height="100%">
+        <el-table-column prop="param_name" label="参数ID" width="150" />
+        <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
+        <el-table-column prop="param_type" label="参数类型" width="120">
+          <template #default="scope">
+            <el-tag
+              :type="scope.row.param_type === 'table' ? 'primary' : 'success'">
+              {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
+        <el-table-column prop="post_period" label="向后预测天数" width="150" />
+        <el-table-column prop="agg_func" label="聚合函数" width="120">
+          <template #default="scope">
+            <el-tag v-if="scope.row.agg_func" type="info">{{
+              scope.row.agg_func
+            }}</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="creator_name" label="创建者" width="120" />
+        <el-table-column prop="create_time" label="创建时间" width="160" />
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              size="small"
+              @click="editParam(scope.row)"
+              v-if="isCurrentUserCreator(scope.row)">
+              编辑
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="deleteParam(scope.row)"
+              v-if="isCurrentUserCreator(scope.row)">
+              删除
+            </el-button>
+            <el-button
+              type="default"
+              size="small"
+              @click="copyParam(scope.row)">
+              复制
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <!-- 分页控件 -->
     <div class="pagination-container">
@@ -599,6 +605,10 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .page-header {
@@ -630,9 +640,17 @@ export default {
   width: 300px;
 }
 
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
 .pagination-container {
-  margin-top: 20px;
+  margin-top: auto;
   display: flex;
   justify-content: flex-end;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
 }
 </style>

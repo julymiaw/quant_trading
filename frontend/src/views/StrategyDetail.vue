@@ -23,331 +23,357 @@
       </div>
     </div>
 
-    <!-- 策略基本信息卡片 -->
-    <el-card class="strategy-info-card" :loading="loading">
-      <template #header>
-        <div class="card-header">
-          <span>策略基本信息</span>
-          <el-button v-if="canEdit" type="text" @click="editBasicInfo">
-            <el-icon><Edit /></el-icon>
-            编辑
-          </el-button>
-        </div>
-      </template>
-      <div class="info-grid">
-        <div class="info-item">
-          <label>创建者：</label>
-          <span>{{ strategy.creator_name }}</span>
-        </div>
-        <div class="info-item">
-          <label>是否公开：</label>
-          <el-switch v-model="strategy.public" disabled />
-        </div>
-        <div class="info-item">
-          <label>生效范围：</label>
-          <el-tag
-            :type="
-              strategy.scope_type === 'all'
-                ? 'primary'
-                : strategy.scope_type === 'single_stock'
-                ? 'success'
-                : 'warning'
-            ">
-            {{ scopeTypeText }}
-          </el-tag>
-        </div>
-        <div class="info-item" v-if="strategy.scope_type !== 'all'">
-          <label>股票/指数ID：</label>
-          <span>{{ strategy.scope_id }}</span>
-        </div>
-        <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
-          <label>持仓数量：</label>
-          <span>{{ strategy.position_count }}只</span>
-        </div>
-        <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
-          <label>调仓间隔：</label>
-          <span>{{ strategy.rebalance_interval }}天</span>
-        </div>
-        <div class="info-item">
-          <label>买入手续费率：</label>
-          <span>{{ (strategy.buy_fee_rate * 100).toFixed(3) }}%</span>
-        </div>
-        <div class="info-item">
-          <label>卖出手续费率：</label>
-          <span>{{ (strategy.sell_fee_rate * 100).toFixed(3) }}%</span>
-        </div>
-      </div>
-      <div class="info-item full-width">
-        <label>策略描述：</label>
-        <div class="strategy-desc">{{ strategy.strategy_desc }}</div>
-      </div>
-      <div class="info-item">
-        <label>创建时间：</label>
-        <span>{{ strategy.create_time }}</span>
-      </div>
-      <div class="info-item">
-        <label>更新时间：</label>
-        <span>{{ strategy.update_time }}</span>
-      </div>
-    </el-card>
-
-    <!-- 策略代码展示 -->
-    <el-card
-      class="strategy-code-card"
-      :loading="loading"
-      style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span>选股函数代码</span>
-        </div>
-      </template>
-      <el-scrollbar height="400px" class="code-scrollbar">
-        <pre class="code-block">{{ strategy.select_func }}</pre>
-      </el-scrollbar>
-    </el-card>
-
-    <!-- 风险控制函数代码 -->
-    <el-card
-      class="strategy-code-card"
-      :loading="loading"
-      style="margin-top: 20px"
-      v-if="strategy.risk_control_func">
-      <template #header>
-        <div class="card-header">
-          <span>风险控制函数代码</span>
-        </div>
-      </template>
-      <el-scrollbar height="400px" class="code-scrollbar">
-        <pre class="code-block">{{ strategy.risk_control_func }}</pre>
-      </el-scrollbar>
-    </el-card>
-
-    <!-- 参数列表 -->
-    <el-card
-      class="strategy-params-card"
-      :loading="loading"
-      style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span>参数列表</span>
-          <el-button v-if="canEdit" type="primary" @click="showAddParamDialog">
-            <el-icon><Plus /></el-icon>
-            添加参数
-          </el-button>
-        </div>
-      </template>
-      <el-table :data="strategyParams" style="width: 100%" border>
-        <el-table-column prop="param_name" label="参数ID" width="150" />
-        <el-table-column prop="data_id" label="数据来源ID" width="200" />
-        <el-table-column prop="param_type" label="参数类型" width="120">
-          <template #default="scope">
-            <el-tag
-              :type="scope.row.param_type === 'table' ? 'primary' : 'success'">
-              {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
-        <el-table-column prop="post_period" label="向后预测天数" width="150" />
-        <el-table-column prop="agg_func" label="聚合函数" width="120" />
-        <el-table-column label="操作" width="120" fixed="right" v-if="canEdit">
-          <template #default="scope">
-            <el-button
-              type="danger"
-              size="small"
-              @click="removeParam(scope.row)">
-              删除
+    <!-- 主要内容区域 -->
+    <div class="strategy-content">
+      <!-- 策略基本信息卡片 -->
+      <el-card class="strategy-info-card" :loading="loading">
+        <template #header>
+          <div class="card-header">
+            <span>策略基本信息</span>
+            <el-button v-if="canEdit" type="text" @click="editBasicInfo">
+              <el-icon><Edit /></el-icon>
+              编辑
             </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-if="strategyParams.length === 0" class="empty-params">
-        <el-empty description="暂无参数" />
-      </div>
-    </el-card>
+          </div>
+        </template>
+        <div class="info-grid">
+          <div class="info-item">
+            <label>创建者：</label>
+            <span>{{ strategy.creator_name }}</span>
+          </div>
+          <div class="info-item">
+            <label>是否公开：</label>
+            <el-switch v-model="strategy.public" disabled />
+          </div>
+          <div class="info-item">
+            <label>生效范围：</label>
+            <el-tag
+              :type="
+                strategy.scope_type === 'all'
+                  ? 'primary'
+                  : strategy.scope_type === 'single_stock'
+                  ? 'success'
+                  : 'warning'
+              ">
+              {{ scopeTypeText }}
+            </el-tag>
+          </div>
+          <div class="info-item" v-if="strategy.scope_type !== 'all'">
+            <label>股票/指数ID：</label>
+            <span>{{ strategy.scope_id }}</span>
+          </div>
+          <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
+            <label>持仓数量：</label>
+            <span>{{ strategy.position_count }}只</span>
+          </div>
+          <div class="info-item" v-if="strategy.scope_type !== 'single_stock'">
+            <label>调仓间隔：</label>
+            <span>{{ strategy.rebalance_interval }}天</span>
+          </div>
+          <div class="info-item">
+            <label>买入手续费率：</label>
+            <span>{{ (strategy.buy_fee_rate * 100).toFixed(3) }}%</span>
+          </div>
+          <div class="info-item">
+            <label>卖出手续费率：</label>
+            <span>{{ (strategy.sell_fee_rate * 100).toFixed(3) }}%</span>
+          </div>
+        </div>
+        <div class="info-item full-width">
+          <label>策略描述：</label>
+          <div class="strategy-desc">{{ strategy.strategy_desc }}</div>
+        </div>
+        <div class="info-item">
+          <label>创建时间：</label>
+          <span>{{ strategy.create_time }}</span>
+        </div>
+        <div class="info-item">
+          <label>更新时间：</label>
+          <span>{{ strategy.update_time }}</span>
+        </div>
+      </el-card>
 
-    <!-- 添加参数弹窗 -->
-    <el-dialog
-      v-model="addParamDialogVisible"
-      title="添加参数"
-      width="600px"
-      :before-close="handleAddParamDialogClose">
-      <el-form
-        ref="paramFormRef"
-        :model="paramForm"
-        :rules="paramRules"
-        label-width="120px">
-        <el-form-item label="参数ID" prop="param_name">
-          <el-input v-model="paramForm.param_name" placeholder="请输入参数ID" />
-        </el-form-item>
-        <el-form-item label="数据来源ID" prop="data_id">
-          <SmartAutocomplete
-            v-model="paramForm.data_id"
-            node-type="数据表"
-            placeholder="请输入数据来源ID，如：daily.open"
-            @select="handleDataSourceSelect" />
-        </el-form-item>
-        <el-form-item label="参数类型" prop="param_type">
-          <el-select
-            v-model="paramForm.param_type"
-            placeholder="请选择参数类型">
-            <el-option label="数据表" value="table" />
-            <el-option label="指标" value="indicator" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="向前取历史天数" prop="pre_period">
-          <el-input-number v-model="paramForm.pre_period" :min="0" :max="365" />
-        </el-form-item>
-        <el-form-item label="向后预测天数" prop="post_period">
-          <el-input-number
-            v-model="paramForm.post_period"
-            :min="0"
-            :max="365" />
-        </el-form-item>
-        <el-form-item label="聚合函数" prop="agg_func">
-          <el-select
-            v-model="paramForm.agg_func"
-            placeholder="请选择聚合函数"
-            clearable>
-            <el-option label="SMA" value="SMA" />
-            <el-option label="EMA" value="EMA" />
-            <el-option label="MAX" value="MAX" />
-            <el-option label="MIN" value="MIN" />
-            <el-option label="SUM" value="SUM" />
-            <el-option label="AVG" value="AVG" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="handleAddParamDialogClose">取消</el-button>
-          <el-button type="primary" @click="addParam">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
+      <!-- 策略代码展示 -->
+      <el-card
+        class="strategy-code-card"
+        :loading="loading"
+        style="margin-top: 20px">
+        <template #header>
+          <div class="card-header">
+            <span>选股函数代码</span>
+          </div>
+        </template>
+        <el-scrollbar height="400px" class="code-scrollbar">
+          <pre class="code-block">{{ strategy.select_func }}</pre>
+        </el-scrollbar>
+      </el-card>
 
-    <!-- 编辑基本信息弹窗 -->
-    <el-dialog
-      v-model="editBasicInfoDialogVisible"
-      title="编辑基本信息"
-      width="600px"
-      :before-close="handleEditBasicInfoDialogClose">
-      <el-form
-        ref="editBasicInfoFormRef"
-        :model="editBasicInfoForm"
-        :rules="editBasicInfoRules"
-        label-width="120px">
-        <el-form-item label="策略名称" prop="strategy_name">
-          <el-input
-            v-model="editBasicInfoForm.strategy_name"
-            placeholder="请输入策略名称" />
-        </el-form-item>
-        <el-form-item label="是否公开" prop="public">
-          <el-switch v-model="editBasicInfoForm.public" />
-        </el-form-item>
-        <el-form-item label="策略描述" prop="strategy_desc">
-          <el-input
-            v-model="editBasicInfoForm.strategy_desc"
-            type="textarea"
-            placeholder="请输入策略描述" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="handleEditBasicInfoDialogClose">取消</el-button>
-          <el-button type="primary" @click="saveBasicInfo">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
+      <!-- 风险控制函数代码 -->
+      <el-card
+        class="strategy-code-card"
+        :loading="loading"
+        style="margin-top: 20px"
+        v-if="strategy.risk_control_func">
+        <template #header>
+          <div class="card-header">
+            <span>风险控制函数代码</span>
+          </div>
+        </template>
+        <el-scrollbar height="400px" class="code-scrollbar">
+          <pre class="code-block">{{ strategy.risk_control_func }}</pre>
+        </el-scrollbar>
+      </el-card>
 
-    <!-- 编辑代码弹窗 -->
-    <el-dialog
-      v-model="editCodeDialogVisible"
-      title="编辑策略代码"
-      width="800px"
-      :before-close="handleEditCodeDialogClose">
-      <div class="code-editor-tabs">
-        <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
-          <el-tab-pane label="选股函数" name="select_func">
+      <!-- 参数列表 -->
+      <el-card
+        class="strategy-params-card"
+        :loading="loading"
+        style="margin-top: 20px">
+        <template #header>
+          <div class="card-header">
+            <span>参数列表</span>
+            <el-button
+              v-if="canEdit"
+              type="primary"
+              @click="showAddParamDialog">
+              <el-icon><Plus /></el-icon>
+              添加参数
+            </el-button>
+          </div>
+        </template>
+        <el-table :data="strategyParams" style="width: 100%" border>
+          <el-table-column prop="param_name" label="参数ID" width="150" />
+          <el-table-column prop="data_id" label="数据来源ID" width="200" />
+          <el-table-column prop="param_type" label="参数类型" width="120">
+            <template #default="scope">
+              <el-tag
+                :type="
+                  scope.row.param_type === 'table' ? 'primary' : 'success'
+                ">
+                {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="pre_period"
+            label="向前取历史天数"
+            width="150" />
+          <el-table-column
+            prop="post_period"
+            label="向后预测天数"
+            width="150" />
+          <el-table-column prop="agg_func" label="聚合函数" width="120" />
+          <el-table-column
+            label="操作"
+            width="120"
+            fixed="right"
+            v-if="canEdit">
+            <template #default="scope">
+              <el-button
+                type="danger"
+                size="small"
+                @click="removeParam(scope.row)">
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="strategyParams.length === 0" class="empty-params">
+          <el-empty description="暂无参数" />
+        </div>
+      </el-card>
+
+      <!-- 添加参数弹窗 -->
+      <el-dialog
+        v-model="addParamDialogVisible"
+        title="添加参数"
+        width="600px"
+        :before-close="handleAddParamDialogClose">
+        <el-form
+          ref="paramFormRef"
+          :model="paramForm"
+          :rules="paramRules"
+          label-width="120px">
+          <el-form-item label="参数ID" prop="param_name">
             <el-input
-              v-model="editCodeForm.select_func"
-              type="textarea"
-              :rows="15"
-              placeholder="请输入选股函数代码" />
-          </el-tab-pane>
-          <el-tab-pane label="风险控制函数" name="risk_control_func">
-            <el-input
-              v-model="editCodeForm.risk_control_func"
-              type="textarea"
-              :rows="15"
-              placeholder="请输入风险控制函数代码" />
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="handleEditCodeDialogClose">取消</el-button>
-          <el-button type="primary" @click="saveCode">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
+              v-model="paramForm.param_name"
+              placeholder="请输入参数ID" />
+          </el-form-item>
+          <el-form-item label="数据来源ID" prop="data_id">
+            <SmartAutocomplete
+              v-model="paramForm.data_id"
+              node-type="数据表"
+              placeholder="请输入数据来源ID，如：daily.open"
+              @select="handleDataSourceSelect" />
+          </el-form-item>
+          <el-form-item label="参数类型" prop="param_type">
+            <el-select
+              v-model="paramForm.param_type"
+              placeholder="请选择参数类型">
+              <el-option label="数据表" value="table" />
+              <el-option label="指标" value="indicator" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="向前取历史天数" prop="pre_period">
+            <el-input-number
+              v-model="paramForm.pre_period"
+              :min="0"
+              :max="365" />
+          </el-form-item>
+          <el-form-item label="向后预测天数" prop="post_period">
+            <el-input-number
+              v-model="paramForm.post_period"
+              :min="0"
+              :max="365" />
+          </el-form-item>
+          <el-form-item label="聚合函数" prop="agg_func">
+            <el-select
+              v-model="paramForm.agg_func"
+              placeholder="请选择聚合函数"
+              clearable>
+              <el-option label="SMA" value="SMA" />
+              <el-option label="EMA" value="EMA" />
+              <el-option label="MAX" value="MAX" />
+              <el-option label="MIN" value="MIN" />
+              <el-option label="SUM" value="SUM" />
+              <el-option label="AVG" value="AVG" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="handleAddParamDialogClose">取消</el-button>
+            <el-button type="primary" @click="addParam">确定</el-button>
+          </span>
+        </template>
+      </el-dialog>
 
-    <!-- 回测弹窗 -->
-    <el-dialog
-      v-model="backtestDialogVisible"
-      title="策略回测"
-      width="800px"
-      :before-close="handleBacktestDialogClose">
-      <el-form
-        ref="backtestFormRef"
-        :model="backtestForm"
-        :rules="backtestRules"
-        label-width="120px">
-        <el-form-item label="开始日期" prop="start_date">
-          <el-date-picker
-            v-model="backtestForm.start_date"
-            type="date"
-            placeholder="选择开始日期"
-            style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="结束日期" prop="end_date">
-          <el-date-picker
-            v-model="backtestForm.end_date"
-            type="date"
-            placeholder="选择结束日期"
-            style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="初始资金(元)" prop="initial_cash">
-          <el-input-number
-            v-model="backtestForm.initial_cash"
-            :min="1000"
-            :max="10000000"
-            :step="1000" />
-        </el-form-item>
-        <el-form-item label="佣金费率" prop="commission_rate">
-          <el-input-number
-            v-model="backtestForm.commission_rate"
-            :min="0"
-            :max="0.1"
-            :step="0.0001" />
-        </el-form-item>
-        <el-form-item label="滑点率" prop="slippage_rate">
-          <el-input-number
-            v-model="backtestForm.slippage_rate"
-            :min="0"
-            :max="0.1"
-            :step="0.0001" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="handleBacktestDialogClose">取消</el-button>
-          <el-button type="primary" @click="confirmBacktest"
-            >开始回测</el-button
-          >
-        </span>
-      </template>
-    </el-dialog>
+      <!-- 编辑基本信息弹窗 -->
+      <el-dialog
+        v-model="editBasicInfoDialogVisible"
+        title="编辑基本信息"
+        width="600px"
+        :before-close="handleEditBasicInfoDialogClose">
+        <el-form
+          ref="editBasicInfoFormRef"
+          :model="editBasicInfoForm"
+          :rules="editBasicInfoRules"
+          label-width="120px">
+          <el-form-item label="策略名称" prop="strategy_name">
+            <el-input
+              v-model="editBasicInfoForm.strategy_name"
+              placeholder="请输入策略名称" />
+          </el-form-item>
+          <el-form-item label="是否公开" prop="public">
+            <el-switch v-model="editBasicInfoForm.public" />
+          </el-form-item>
+          <el-form-item label="策略描述" prop="strategy_desc">
+            <el-input
+              v-model="editBasicInfoForm.strategy_desc"
+              type="textarea"
+              placeholder="请输入策略描述" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="handleEditBasicInfoDialogClose">取消</el-button>
+            <el-button type="primary" @click="saveBasicInfo">确定</el-button>
+          </span>
+        </template>
+      </el-dialog>
+
+      <!-- 编辑代码弹窗 -->
+      <el-dialog
+        v-model="editCodeDialogVisible"
+        title="编辑策略代码"
+        width="800px"
+        :before-close="handleEditCodeDialogClose">
+        <div class="code-editor-tabs">
+          <el-tabs
+            v-model="activeTab"
+            type="card"
+            @tab-change="handleTabChange">
+            <el-tab-pane label="选股函数" name="select_func">
+              <el-input
+                v-model="editCodeForm.select_func"
+                type="textarea"
+                :rows="15"
+                placeholder="请输入选股函数代码" />
+            </el-tab-pane>
+            <el-tab-pane label="风险控制函数" name="risk_control_func">
+              <el-input
+                v-model="editCodeForm.risk_control_func"
+                type="textarea"
+                :rows="15"
+                placeholder="请输入风险控制函数代码" />
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="handleEditCodeDialogClose">取消</el-button>
+            <el-button type="primary" @click="saveCode">确定</el-button>
+          </span>
+        </template>
+      </el-dialog>
+
+      <!-- 回测弹窗 -->
+      <el-dialog
+        v-model="backtestDialogVisible"
+        title="策略回测"
+        width="800px"
+        :before-close="handleBacktestDialogClose">
+        <el-form
+          ref="backtestFormRef"
+          :model="backtestForm"
+          :rules="backtestRules"
+          label-width="120px">
+          <el-form-item label="开始日期" prop="start_date">
+            <el-date-picker
+              v-model="backtestForm.start_date"
+              type="date"
+              placeholder="选择开始日期"
+              style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="结束日期" prop="end_date">
+            <el-date-picker
+              v-model="backtestForm.end_date"
+              type="date"
+              placeholder="选择结束日期"
+              style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="初始资金(元)" prop="initial_cash">
+            <el-input-number
+              v-model="backtestForm.initial_cash"
+              :min="1000"
+              :max="10000000"
+              :step="1000" />
+          </el-form-item>
+          <el-form-item label="佣金费率" prop="commission_rate">
+            <el-input-number
+              v-model="backtestForm.commission_rate"
+              :min="0"
+              :max="0.1"
+              :step="0.0001" />
+          </el-form-item>
+          <el-form-item label="滑点率" prop="slippage_rate">
+            <el-input-number
+              v-model="backtestForm.slippage_rate"
+              :min="0"
+              :max="0.1"
+              :step="0.0001" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="handleBacktestDialogClose">取消</el-button>
+            <el-button type="primary" @click="confirmBacktest"
+              >开始回测</el-button
+            >
+          </span>
+        </template>
+      </el-dialog>
+    </div>
   </div>
 </template>
 
@@ -1090,6 +1116,16 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.strategy-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px;
 }
 
 .page-header {

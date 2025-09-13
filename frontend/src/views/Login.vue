@@ -202,7 +202,8 @@ export default {
 .login-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* 顶部淡绿色条 */
@@ -231,7 +232,8 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 64px);
+  overflow-y: auto;
 }
 
 /* 登录表单卡片 */

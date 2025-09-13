@@ -45,62 +45,65 @@
     </div>
 
     <!-- 指标列表表格 -->
-    <el-table
-      v-loading="loading"
-      :data="filteredIndicators"
-      style="width: 100%"
-      border
-      row-key="id">
-      <el-table-column prop="indicator_name" label="指标名称" min-width="180">
-        <template #default="scope">
-          <el-link
-            type="primary"
-            :underline="false"
-            @click="goToIndicatorDetail(scope.row)">
-            {{ scope.row.indicator_name }}
-          </el-link>
-        </template>
-      </el-table-column>
-      <el-table-column prop="creator_name" label="创建者" width="120" />
-      <el-table-column prop="is_active" label="状态" width="80">
-        <template #default="scope">
-          <el-switch
-            v-model="scope.row.is_active"
-            @change="toggleIndicatorStatus(scope.row)"
-            :disabled="!isCurrentUserCreator(scope.row)" />
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="description"
-        label="指标说明"
-        show-overflow-tooltip
-        min-width="200" />
-      <el-table-column prop="create_time" label="创建时间" width="160" />
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="scope">
-          <el-button
-            type="primary"
-            size="small"
-            @click="editIndicator(scope.row)"
-            v-if="isCurrentUserCreator(scope.row)">
-            编辑
-          </el-button>
-          <el-button
-            type="danger"
-            size="small"
-            @click="deleteIndicator(scope.row)"
-            v-if="isCurrentUserCreator(scope.row)">
-            删除
-          </el-button>
-          <el-button
-            type="default"
-            size="small"
-            @click="copyIndicator(scope.row)">
-            复制
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="table-container">
+      <el-table
+        v-loading="loading"
+        :data="filteredIndicators"
+        style="width: 100%"
+        border
+        row-key="id"
+        height="100%">
+        <el-table-column prop="indicator_name" label="指标名称" min-width="180">
+          <template #default="scope">
+            <el-link
+              type="primary"
+              :underline="false"
+              @click="goToIndicatorDetail(scope.row)">
+              {{ scope.row.indicator_name }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="creator_name" label="创建者" width="120" />
+        <el-table-column prop="is_active" label="状态" width="80">
+          <template #default="scope">
+            <el-switch
+              v-model="scope.row.is_active"
+              @change="toggleIndicatorStatus(scope.row)"
+              :disabled="!isCurrentUserCreator(scope.row)" />
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="description"
+          label="指标说明"
+          show-overflow-tooltip
+          min-width="200" />
+        <el-table-column prop="create_time" label="创建时间" width="160" />
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              size="small"
+              @click="editIndicator(scope.row)"
+              v-if="isCurrentUserCreator(scope.row)">
+              编辑
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="deleteIndicator(scope.row)"
+              v-if="isCurrentUserCreator(scope.row)">
+              删除
+            </el-button>
+            <el-button
+              type="default"
+              size="small"
+              @click="copyIndicator(scope.row)">
+              复制
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <!-- 分页控件 -->
     <div class="pagination-container">
@@ -1038,6 +1041,10 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .page-header {
@@ -1069,10 +1076,18 @@ export default {
   width: 300px;
 }
 
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
 .pagination-container {
-  margin-top: 20px;
+  margin-top: auto;
   display: flex;
   justify-content: flex-end;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .indicator-params-content {
