@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <header class="navbar">
       <div class="navbar-left">
-        <img src="../../logo_seuquant.png" alt="Logo" class="logo" />
+        <img src="/logo_seuquant.png" alt="Logo" class="logo" />
         <h1 class="app-title">量化交易选股系统</h1>
       </div>
       <div class="navbar-center">
@@ -12,30 +12,31 @@
           :default-active="activeMenu"
           class="nav-menu">
           <el-menu-item index="/" @click="$router.push('/')">
-            <el-icon><i-ep-home /></el-icon>
+            <el-icon><HomeFilled /></el-icon>
             <span>策略管理</span>
           </el-menu-item>
           <el-menu-item
             index="/indicators"
             @click="$router.push('/indicators')">
-            <el-icon><i-ep-line-chart /></el-icon>
+            <el-icon><DataAnalysis /></el-icon>
             <span>指标管理</span>
           </el-menu-item>
           <el-menu-item index="/params" @click="$router.push('/params')">
-            <el-icon><i-ep-setting /></el-icon>
+            <el-icon><Setting /></el-icon>
             <span>参数管理</span>
           </el-menu-item>
         </el-menu>
       </div>
       <div class="navbar-right">
         <el-button type="text" @click="goBack">
-          <el-icon><i-ep-arrow-left /></el-icon>
+          <el-icon><ArrowLeft /></el-icon>
           返回上一页
         </el-button>
         <el-dropdown>
-          <el-button type="primary" icon="User">
+          <el-button type="primary">
+            <el-icon><User /></el-icon>
             {{ userInfo?.user_name || "用户" }}
-            <el-icon class="el-icon--right"><i-ep-caret-bottom /></el-icon>
+            <el-icon class="el-icon--right"><CaretBottom /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -97,9 +98,25 @@
 <script>
 import { onMounted, ref, computed } from "vue";
 import { useRouter } from "vue-router";
+import {
+  HomeFilled,
+  DataAnalysis,
+  Setting,
+  ArrowLeft,
+  CaretBottom,
+  User,
+} from "@element-plus/icons-vue";
 
 export default {
   name: "Layout",
+  components: {
+    HomeFilled,
+    DataAnalysis,
+    Setting,
+    ArrowLeft,
+    CaretBottom,
+    User,
+  },
   setup() {
     const router = useRouter();
     const userInfo = ref(null);
@@ -221,11 +238,41 @@ export default {
   flex: 1;
   display: flex;
   justify-content: center;
+  max-width: 600px;
+  margin: 0 20px;
 }
 
 .nav-menu {
-  width: auto !important;
+  width: 100% !important;
   background-color: transparent !important;
+  min-width: 400px;
+}
+
+.nav-menu .el-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  min-width: 120px !important;
+  padding: 0 20px !important;
+}
+
+.nav-menu .el-menu-item span {
+  margin-left: 8px;
+}
+
+.nav-menu .el-menu-item .el-icon {
+  margin-right: 0;
+}
+
+/* 防止菜单自动折叠 */
+.nav-menu .el-sub-menu {
+  display: none !important;
+}
+
+/* 确保所有菜单项都显示 */
+.nav-menu .el-menu-item {
+  display: flex !important;
 }
 
 .navbar-right {
