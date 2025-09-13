@@ -8,6 +8,7 @@
 import pymysql
 import json
 import os
+import re
 import logging
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -221,8 +222,6 @@ def register():
             return jsonify({"message": "用户名、密码和邮箱为必填项"}), 400
 
         # 验证用户名格式（仅允许英文、数字、下划线）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_]+$", user_name):
             return jsonify({"message": "用户名仅允许英文、数字、下划线"}), 400
 
@@ -481,8 +480,6 @@ def create_param(current_user):
             return jsonify({"message": "历史天数和预测天数不能为负数"}), 400
 
         # 验证参数ID格式（仅允许字母、数字、下划线和点号）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_.]+$", param_name):
             return jsonify({"message": "参数ID只能包含字母、数字、下划线和点号"}), 400
 
@@ -610,8 +607,6 @@ def update_param(current_user, param_composite_id):
             return jsonify({"message": "历史天数和预测天数不能为负数"}), 400
 
         # 验证参数ID格式
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_.]+$", new_param_name):
             return jsonify({"message": "参数ID只能包含字母、数字、下划线和点号"}), 400
 
@@ -850,69 +845,239 @@ def delete_param(current_user, param_composite_id):
         return jsonify({"message": f"删除参数失败: {str(e)}"}), 500
 
 
-# 获取数据源列表API（用于前端自动完成）
+# 智能搜索建议API（替代原来的数据源列表API）
+@app.route("/api/suggestions", methods=["POST"])
+@token_required
+def get_suggestions(current_user):
+    """
+    获取智能搜索建议
+    请求格式：
+    {
+        "node_type": "策略|参数|指标|数据表",
+        "input_text": "用户输入的文本"
+    }
+    """
+    try:
+        data = request.get_json()
+        node_type = data.get("node_type", "")
+        input_text = data.get("input_text", "")
+
+        suggestions = []
+
+        if node_type == "数据表":
+            suggestions = handle_table_suggestions(input_text)
+        elif node_type in ["策略", "参数", "指标"]:
+            suggestions = handle_entity_suggestions(node_type, input_text)
+
+        return jsonify({"success": True, "suggestions": suggestions})
+
+    except Exception as e:
+        logger.error(f"获取智能搜索建议过程中发生错误: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+def handle_table_suggestions(input_text: str) -> list:
+    """
+    处理数据表类型的建议
+    逻辑：
+    1. 如果没有点号，搜索表名（daily, daily_basic）
+    2. 如果有点号，点号前是表名，点号后搜索字段
+    """
+    if "." not in input_text:
+        # 搜索表名
+        tables = ["daily", "daily_basic"]
+        if not input_text:
+            return tables
+        return [table for table in tables if table.startswith(input_text.lower())]
+    else:
+        # 搜索字段
+        table_name, field_query = input_text.split(".", 1)
+        if table_name in ["daily", "daily_basic"]:
+            fields = get_table_fields(table_name)
+            if not field_query:
+                return [f"{table_name}.{field}" for field in fields]
+            matching_fields = [
+                field
+                for field in fields
+                if field.lower().startswith(field_query.lower())
+            ]
+            return [f"{table_name}.{field}" for field in matching_fields]
+        else:
+            return []
+
+
+def handle_entity_suggestions(node_type: str, input_text: str) -> list:
+    """
+    处理策略、参数、指标类型的建议
+    逻辑：
+    1. 如果没有点号，搜索用户名
+    2. 如果有点号，点号前是用户名，点号后搜索对应的实体
+    """
+    if "." not in input_text:
+        # 搜索用户名
+        return search_users(input_text)
+    else:
+        # 搜索具体实体
+        creator_name, entity_query = input_text.split(".", 1)
+
+        entities = []
+        if node_type == "策略":
+            entities = search_strategies(creator_name, entity_query)
+        elif node_type == "参数":
+            entities = search_params(creator_name, entity_query)
+        elif node_type == "指标":
+            entities = search_indicators(creator_name, entity_query)
+
+        # 返回完整的 creator.entity 格式
+        return [f"{creator_name}.{entity}" for entity in entities]
+
+
+def get_table_fields(table_name: str) -> list:
+    """获取指定表的所有字段名"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+
+        # 根据表名判断使用哪个数据库
+        if table_name in ["daily", "daily_basic"]:
+            # 这些表在tushare_cache数据库中，需要切换数据库连接
+            cursor.execute("USE tushare_cache")
+
+        # 查询表的字段信息
+        cursor.execute(f"DESCRIBE {table_name}")
+        fields = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return fields
+    except Exception as e:
+        logger.error(f"获取表字段失败: {e}")
+        return []
+
+
+def search_users(query: str = "") -> list:
+    """搜索用户名"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT DISTINCT user_name FROM users WHERE user_name LIKE %s ORDER BY user_name",
+                (f"{query}%",),
+            )
+        else:
+            cursor.execute("SELECT DISTINCT user_name FROM users ORDER BY user_name")
+
+        users = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return users
+    except Exception as e:
+        logger.error(f"搜索用户失败: {e}")
+        return []
+
+
+def search_strategies(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的策略"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT strategy_name FROM strategies WHERE creator_name = %s AND strategy_name LIKE %s ORDER BY strategy_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT strategy_name FROM strategies WHERE creator_name = %s ORDER BY strategy_name",
+                (creator_name,),
+            )
+
+        strategies = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return strategies
+    except Exception as e:
+        logger.error(f"搜索策略失败: {e}")
+        return []
+
+
+def search_params(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的参数"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT param_name FROM parameters WHERE creator_name = %s AND param_name LIKE %s ORDER BY param_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT param_name FROM parameters WHERE creator_name = %s ORDER BY param_name",
+                (creator_name,),
+            )
+
+        params = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return params
+    except Exception as e:
+        logger.error(f"搜索参数失败: {e}")
+        return []
+
+
+def search_indicators(creator_name: str, query: str = "") -> list:
+    """搜索指定用户的指标"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return []
+
+        cursor = connection.cursor()
+        if query:
+            cursor.execute(
+                "SELECT indicator_name FROM indicators WHERE creator_name = %s AND indicator_name LIKE %s ORDER BY indicator_name",
+                (creator_name, f"{query}%"),
+            )
+        else:
+            cursor.execute(
+                "SELECT indicator_name FROM indicators WHERE creator_name = %s ORDER BY indicator_name",
+                (creator_name,),
+            )
+
+        indicators = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        return indicators
+    except Exception as e:
+        logger.error(f"搜索指标失败: {e}")
+        return []
+
+
+# 保留原来的数据源API作为兼容性支持
 @app.route("/api/data-sources", methods=["GET"])
 @token_required
 def get_data_sources(current_user):
-    """获取数据源列表接口"""
+    """获取数据源列表接口（兼容性支持）"""
     try:
-        # 模拟数据源列表，实际项目中可以从配置文件或数据库获取
-        data_sources = [
-            # 基础数据表
-            "daily.open",
-            "daily.close",
-            "daily.high",
-            "daily.low",
-            "daily.volume",
-            "daily.amount",
-            "daily.pct_change",
-            "daily_basic.total_mv",
-            "daily_basic.circ_mv",
-            "daily_basic.pe",
-            "daily_basic.pb",
-            "daily_basic.ps",
-            "daily_basic.pcf",
-            # 估值数据
-            "valuation.market_cap",
-            "valuation.pe_ratio",
-            "valuation.pb_ratio",
-            "valuation.ps_ratio",
-            "valuation.pcf_ratio",
-            # 技术指标
-            "indicator.MACD",
-            "indicator.KDJ",
-            "indicator.RSI",
-            "indicator.BOLL",
-            "indicator.MA",
-            "indicator.EMA",
-            "indicator.VOLMA",
-            "indicator.ATR",
-            "indicator.CCI",
-            # 系统指标（来自Indicator表）
-            "system.MACD",
-            "system.KDJ",
-            "system.RSI",
-        ]
-
         # 获取查询参数
-        query = request.args.get("q", "").strip().lower()
+        query = request.args.get("q", "").strip()
 
-        # 过滤数据源
-        if query:
-            filtered_sources = [
-                source for source in data_sources if query in source.lower()
-            ]
-        else:
-            filtered_sources = data_sources
+        # 使用新的智能搜索逻辑
+        suggestions = handle_table_suggestions(query)
 
-        return (
-            jsonify(
-                {
-                    "data": filtered_sources[:50],  # 限制返回数量
-                    "message": "获取数据源列表成功",
-                }
-            ),
-            200,
+        return jsonify(
+            {
+                "data": suggestions[:50],  # 限制返回数量
+                "message": "获取数据源列表成功",
+            }
         )
 
     except Exception as e:
@@ -1092,8 +1257,6 @@ def create_strategy(current_user):
                 return jsonify({"code": 400, "message": "调仓间隔必须大于0"})
 
         # 验证策略名格式（仅允许中文、英文、数字、下划线）
-        import re
-
         if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", strategy_name):
             return jsonify(
                 {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
@@ -1271,8 +1434,6 @@ def update_strategy(current_user, creator_name, strategy_name):
                 return jsonify({"code": 400, "message": "调仓间隔必须大于0"})
 
         # 验证策略名格式
-        import re
-
         if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", new_strategy_name):
             return jsonify(
                 {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
@@ -1794,8 +1955,6 @@ def create_indicator(current_user):
             return jsonify({"message": "指标名称和计算函数不能为空"}), 400
 
         # 验证指标名称格式（仅允许中英文、数字、下划线）
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_\u4e00-\u9fa5]+$", indicator_name):
             return jsonify({"message": "指标名称只能包含中英文、数字、下划线"}), 400
 
@@ -1904,8 +2063,6 @@ def update_indicator(current_user, indicator_composite_id):
             return jsonify({"message": "指标名称和计算函数不能为空"}), 400
 
         # 验证指标名称格式
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_\u4e00-\u9fa5]+$", new_indicator_name):
             return jsonify({"message": "指标名称只能包含中英文、数字、下划线"}), 400
 
