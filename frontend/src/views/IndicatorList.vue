@@ -121,7 +121,7 @@
     <el-dialog
       v-model="indicatorDialogVisible"
       :title="isEditMode ? '编辑指标' : '添加指标'"
-      width="600px"
+      width="700px"
       :before-close="handleIndicatorDialogClose">
       <el-form
         ref="indicatorFormRef"
@@ -134,11 +134,13 @@
             placeholder="请输入指标名称" />
         </el-form-item>
         <el-form-item label="计算函数" prop="calculation_method">
-          <el-input
-            v-model="indicatorForm.calculation_method"
-            type="textarea"
-            :rows="8"
-            placeholder="请输入指标计算函数" />
+          <div class="code-editor-wrapper">
+            <CodeEditor
+              v-model="indicatorForm.calculation_method"
+              :default-code="defaultIndicatorFunc"
+              height="300px"
+              placeholder="请输入指标计算函数" />
+          </div>
         </el-form-item>
         <el-form-item label="指标说明" prop="description">
           <el-input
@@ -305,6 +307,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import axios from "axios";
 import SmartAutocomplete from "@/components/SmartAutocomplete.vue";
+import CodeEditor from "@/components/CodeEditor.vue";
 
 export default {
   name: "IndicatorList",
@@ -313,6 +316,7 @@ export default {
     Search,
     Refresh,
     SmartAutocomplete,
+    CodeEditor,
   },
   setup() {
     const router = useRouter();
@@ -324,6 +328,32 @@ export default {
     const currentPage = ref(1);
     const pageSize = ref(10);
     const total = ref(0);
+
+    // 默认指标代码模板
+    const defaultIndicatorFunc = `def calculation_method(params):
+    """
+    指标计算函数 - 计算自定义技术指标
+
+    参数说明:
+    - params: 参数字典，包含各种数据和指标值
+      例如: params["daily.close"] - 当日收盘价
+            params["system.ema_5"] - 5日EMA指标
+
+    返回值:
+    - 计算结果数值
+    """
+    # 示例：计算收盘价相对5日EMA的偏离度
+    if "daily.close" in params and "system.ema_5" in params:
+        close_price = params["daily.close"]
+        ema_5 = params["system.ema_5"]
+
+        # 计算偏离度（百分比）
+        if ema_5 > 0:
+            deviation = (close_price - ema_5) / ema_5 * 100
+            return deviation
+
+    # 默认返回值
+    return 0.0`;
 
     // 弹窗相关状态
     const indicatorDialogVisible = ref(false);
@@ -1011,6 +1041,7 @@ export default {
       addParamForm,
       addParamRules,
       filteredIndicators,
+      defaultIndicatorFunc,
       fetchIndicators,
       refreshIndicators,
       goToIndicatorDetail,
@@ -1107,5 +1138,11 @@ export default {
 .empty-params {
   padding: 40px 0;
   text-align: center;
+}
+
+.code-editor-wrapper {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
 }
 </style>

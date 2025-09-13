@@ -286,7 +286,7 @@
       <el-dialog
         v-model="editCodeDialogVisible"
         title="编辑策略代码"
-        width="800px"
+        width="900px"
         :before-close="handleEditCodeDialogClose">
         <div class="code-editor-tabs">
           <el-tabs
@@ -294,18 +294,22 @@
             type="card"
             @tab-change="handleTabChange">
             <el-tab-pane label="选股函数" name="select_func">
-              <el-input
-                v-model="editCodeForm.select_func"
-                type="textarea"
-                :rows="15"
-                placeholder="请输入选股函数代码" />
+              <div class="code-editor-wrapper">
+                <CodeEditor
+                  v-model="editCodeForm.select_func"
+                  :default-code="defaultSelectFunc"
+                  height="400px"
+                  placeholder="请输入选股函数代码" />
+              </div>
             </el-tab-pane>
             <el-tab-pane label="风险控制函数" name="risk_control_func">
-              <el-input
-                v-model="editCodeForm.risk_control_func"
-                type="textarea"
-                :rows="15"
-                placeholder="请输入风险控制函数代码" />
+              <div class="code-editor-wrapper">
+                <CodeEditor
+                  v-model="editCodeForm.risk_control_func"
+                  :default-code="defaultRiskControlFunc"
+                  height="400px"
+                  placeholder="请输入风险控制函数代码" />
+              </div>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -384,6 +388,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Edit, DataAnalysis, Plus } from "@element-plus/icons-vue";
 import axios from "axios";
 import SmartAutocomplete from "@/components/SmartAutocomplete.vue";
+import CodeEditor from "@/components/CodeEditor.vue";
 
 export default {
   name: "StrategyDetail",
@@ -392,11 +397,77 @@ export default {
     DataAnalysis,
     Plus,
     SmartAutocomplete,
+    CodeEditor,
   },
   setup() {
     const router = useRouter();
     const route = useRoute();
     const loading = ref(false);
+
+    // 默认代码模板
+    const defaultSelectFunc = `def select_func(candidates, params, position_count, current_holdings, date, context=None):
+    """
+    选股函数 - 根据策略逻辑选择要持有的股票
+
+    参数说明:
+    - candidates: 可选股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - position_count: 最大持仓股票数量
+    - current_holdings: 当前持仓股票列表
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
+
+    返回值:
+    - 选中的股票列表（最多position_count只）
+    """
+    # 示例：选择市值最小的position_count只股票
+    if not candidates:
+        return []
+
+    # 获取股票市值数据
+    market_values = []
+    for stock in candidates:
+        if f"system.total_mv" in params.get(stock, {}):
+            mv = params[stock]["system.total_mv"]
+            market_values.append((stock, mv))
+
+    # 按市值从小到大排序，选择最小的position_count只
+    market_values.sort(key=lambda x: x[1])
+    selected = [stock for stock, _ in market_values[:position_count]]
+
+    return selected`;
+
+    const defaultRiskControlFunc = `def risk_control_func(current_holdings, params, date, context=None):
+    """
+    风险控制函数 - 对当前持仓进行风险控制
+
+    参数说明:
+    - current_holdings: 当前持仓股票列表
+    - params: 参数字典，包含各种技术指标和数据
+    - date: 当前日期
+    - context: 上下文对象，可用于存储状态信息
+
+    返回值:
+    - 调整后的持仓股票列表（移除了需要卖出的股票）
+    """
+    if not current_holdings:
+        return []
+
+    sell_list = []
+
+    for stock in current_holdings:
+        stock_params = params.get(stock, {})
+
+        # 示例风控逻辑：EMA60线下穿时卖出
+        if "system.ema_60" in stock_params and "system.close" in stock_params:
+            ema_60 = stock_params["system.ema_60"]
+            close_price = stock_params["system.close"]
+
+            if close_price < ema_60:
+                sell_list.append(stock)
+
+    # 返回剔除卖出股票后的持仓列表
+    return [stock for stock in current_holdings if stock not in sell_list]`;
 
     // 策略数据
     const strategy = reactive({
@@ -1087,6 +1158,8 @@ export default {
       backtestFormRef,
       backtestForm,
       backtestRules,
+      defaultSelectFunc,
+      defaultRiskControlFunc,
       fetchStrategyDetail,
       fetchStrategyParams,
       goBack,
@@ -1214,5 +1287,11 @@ export default {
 
 .code-editor-tabs {
   margin-top: 20px;
+}
+
+.code-editor-wrapper {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
 }
 </style>
