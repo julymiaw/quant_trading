@@ -312,7 +312,7 @@ def get_params(current_user):
                     pre_period,
                     post_period,
                     agg_func,
-                    DATE_FORMAT(NOW(), '%%Y-%%m-%%d %%H:%%i:%%s') as create_time
+                    DATE_FORMAT(creation_time, '%%Y-%%m-%%d %%H:%%i:%%s') as create_time
                 FROM Param
                 WHERE 1=1
                 """
@@ -835,7 +835,7 @@ def get_indicators(current_user):
                     calculation_method,
                     description,
                     is_active,
-                    DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as create_time
+                    DATE_FORMAT(creation_time, '%%Y-%%m-%%d %%H:%%i:%%s') as create_time
                 FROM Indicator
                 WHERE 1=1
                 """

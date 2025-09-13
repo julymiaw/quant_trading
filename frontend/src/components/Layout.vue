@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <header class="navbar">
       <div class="navbar-left">
-        <img src="../../../logo_seuquant.png" alt="Logo" class="logo" />
+        <img src="../../logo_seuquant.png" alt="Logo" class="logo" />
         <h1 class="app-title">量化交易选股系统</h1>
       </div>
       <div class="navbar-center">
