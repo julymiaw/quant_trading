@@ -263,7 +263,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh } from '@element-plus/icons-vue'
@@ -362,45 +362,9 @@ export default {
       return userInfo && indicator.creator_name === userInfo.user_name
     }
     
-    // 计算筛选后的指标列表
+    // 由于筛选和分页都在后端完成，这里直接返回indicators
     const filteredIndicators = computed(() => {
-      let result = [...indicators.value]
-      
-      // 根据指标类型筛选
-      if (indicatorType.value === 'my') {
-        const userInfo = getUserInfo()
-        if (userInfo) {
-          result = result.filter(i => i.creator_name === userInfo.user_name)
-        }
-      } else if (indicatorType.value === 'system') {
-        result = result.filter(i => i.creator_name === 'system')
-      } else if (indicatorType.value === 'public') {
-        // 假设系统指标和用户公开的指标都是公开的
-        result = result.filter(i => i.creator_name === 'system' || (i.is_active && !isCurrentUserCreator(i)))
-      }
-      
-      // 根据搜索关键词筛选
-      if (searchKeyword.value) {
-        const keyword = searchKeyword.value.toLowerCase()
-        result = result.filter(i => 
-          i.indicator_name.toLowerCase().includes(keyword) ||
-          (i.description && i.description.toLowerCase().includes(keyword))
-        )
-      }
-      
-      // 根据状态筛选
-      if (isActive.value !== 'all') {
-        const active = isActive.value === 'true'
-        result = result.filter(i => i.is_active === active)
-      }
-      
-      // 更新总数
-      total.value = result.length
-      
-      // 分页
-      const start = (currentPage.value - 1) * pageSize.value
-      const end = start + pageSize.value
-      return result.slice(start, end)
+      return indicators.value
     })
     
     // 获取指标列表
@@ -408,53 +372,66 @@ export default {
       try {
         loading.value = true
         
-        // 这里使用模拟数据，实际开发中应替换为真实的API调用
-        // const response = await axios.get('/api/indicators')
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          router.push('/login')
+          return
+        }
         
-        // 模拟指标数据
-        const mockIndicators = [
-          {
-            id: '1',
-            creator_name: 'system',
-            indicator_name: 'MACD',
-            calculation_method: `def MACD(close, fastperiod=12, slowperiod=26, signalperiod=9):\n    # 计算快速和慢速移动平均线\n    fastema = np.array(pd.Series(close).ewm(span=fastperiod, adjust=False).mean())\n    slowema = np.array(pd.Series(close).ewm(span=slowperiod, adjust=False).mean())\n    \n    # 计算MACD线\n    macd = fastema - slowema\n    \n    # 计算信号线\n    signal = np.array(pd.Series(macd).ewm(span=signalperiod, adjust=False).mean())\n    \n    # 计算MACD柱状图\n    histogram = macd - signal\n    \n    return macd, signal, histogram`,
-            description: '移动平均收敛发散指标，用于判断股票价格的趋势变化和买卖信号',
-            is_active: true,
-            create_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '2',
-            creator_name: 'system',
-            indicator_name: 'RSI',
-            calculation_method: `def RSI(close, timeperiod=14):\n    # 计算价格变化\n    delta = np.diff(close)\n    \n    # 分离上涨和下跌的变化\n    gain = np.where(delta > 0, delta, 0)\n    loss = np.where(delta < 0, -delta, 0)\n    \n    # 计算平均收益和平均损失\n    avg_gain = np.zeros_like(close)\n    avg_loss = np.zeros_like(close)\n    \n    for i in range(timeperiod, len(close)):\n        avg_gain[i] = np.mean(gain[i-timeperiod:i])\n        avg_loss[i] = np.mean(loss[i-timeperiod:i])\n    \n    # 计算RS和RSI\n    rs = avg_gain / (avg_loss + 1e-10)  # 避免除以零\n    rsi = 100 - (100 / (1 + rs))\n    \n    # 填充前timeperiod个值\n    rsi[:timeperiod] = 50  # 默认值\n    \n    return rsi`,
-            description: '相对强弱指标，用于衡量股票价格的超买超卖程度',
-            is_active: true,
-            create_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '3',
-            creator_name: 'system',
-            indicator_name: 'KDJ',
-            calculation_method: `def KDJ(high, low, close, fastk_period=9, slowk_period=3, slowd_period=3):\n    # 计算RSV值\n    rsv = np.zeros_like(close)\n    for i in range(fastk_period - 1, len(close)):\n        highest_high = np.max(high[i-fastk_period+1:i+1])\n        lowest_low = np.min(low[i-fastk_period+1:i+1])\n        if highest_high == lowest_low:\n            rsv[i] = 50\n        else:\n            rsv[i] = (close[i] - lowest_low) / (highest_high - lowest_low) * 100\n    \n    # 计算K值\n    k = np.zeros_like(close)\n    k[fastk_period-1] = rsv[fastk_period-1]\n    for i in range(fastk_period, len(close)):\n        k[i] = (2/3) * k[i-1] + (1/3) * rsv[i]\n    \n    # 计算D值\n    d = np.zeros_like(close)\n    d[fastk_period-1 + slowk_period-1] = np.mean(k[fastk_period-1 : fastk_period-1 + slowk_period])\n    for i in range(fastk_period + slowk_period-1, len(close)):\n        d[i] = (2/3) * d[i-1] + (1/3) * k[i]\n    \n    # 计算J值\n    j = 3 * d - 2 * k\n    \n    return k, d, j`,
-            description: '随机指标，用于判断股票价格的超买超卖和趋势变化',
-            is_active: true,
-            create_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '4',
-            creator_name: 'test_user',
-            indicator_name: '自定义动量指标',
-            calculation_method: `def CustomMomentum(close, period=20):\n    # 计算指定周期的收益率\n    momentum = np.zeros_like(close)\n    for i in range(period, len(close)):\n        momentum[i] = (close[i] - close[i-period]) / close[i-period] * 100\n    \n    # 填充前period个值\n    momentum[:period] = 0\n    \n    return momentum`,
-            description: '自定义动量指标，用于衡量股票价格在一段时间内的变化率',
-            is_active: true,
-            create_time: '2025-09-10 10:00:00'
+        // 构建查询参数
+        const params = {
+          page: currentPage.value,
+          limit: pageSize.value
+        }
+        
+        // 根据指标类型添加筛选条件
+        if (indicatorType.value === 'my') {
+          const userInfo = getUserInfo()
+          if (userInfo) {
+            params.creator_name = userInfo.user_name
           }
-        ]
+        } else if (indicatorType.value === 'system') {
+          params.creator_name = 'system'
+        }
         
-        indicators.value = mockIndicators
+        // 添加搜索条件
+        if (searchKeyword.value.trim()) {
+          params.search = searchKeyword.value.trim()
+        }
+        
+        // 添加状态筛选
+        if (isActive.value !== 'all') {
+          params.is_enabled = isActive.value === 'true' ? 1 : 0
+        }
+        
+        const response = await axios.get('/api/indicators', {
+          params,
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.data) {
+          // 后端返回的数据结构: {data: [...], pagination: {...}}
+          const indicatorList = response.data.data || response.data
+          
+          // 后端返回的字段已经是正确的格式，不需要转换
+          indicators.value = indicatorList
+          total.value = response.data.pagination ? response.data.pagination.total : indicatorList.length
+        }
       } catch (error) {
         console.error('获取指标列表失败:', error)
-        ElMessage.error('获取指标列表失败，请重试')
+        if (error.response) {
+          if (error.response.status === 401) {
+            ElMessage.error('登录已过期，请重新登录')
+            router.push('/login')
+          } else {
+            ElMessage.error(`获取指标列表失败: ${error.response.data.message || error.response.statusText}`)
+          }
+        } else {
+          ElMessage.error('获取指标列表失败，请重试')
+        }
       } finally {
         loading.value = false
       }
@@ -526,16 +503,32 @@ export default {
         try {
           loading.value = true
           
-          // 这里使用模拟删除，实际开发中应替换为真实的API调用
-          // await axios.delete(`/api/indicators/${indicator.id}`)
+          const token = localStorage.getItem('token')
+          if (!token) {
+            ElMessage.error('请先登录')
+            router.push('/login')
+            return
+          }
           
-          // 模拟删除成功
-          indicators.value = indicators.value.filter(i => i.id !== indicator.id)
+          // 使用后端API删除指标
+          const indicatorId = `${indicator.creator_name}_${indicator.indicator_name}`
+          await axios.delete(`/api/indicators/${indicatorId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
           
           ElMessage.success('指标删除成功')
+          
+          // 刷新列表
+          await fetchIndicators()
         } catch (error) {
           console.error('删除指标失败:', error)
-          ElMessage.error('删除指标失败，请重试')
+          if (error.response) {
+            ElMessage.error(`删除指标失败: ${error.response.data.message || error.response.statusText}`)
+          } else {
+            ElMessage.error('删除指标失败，请重试')
+          }
         } finally {
           loading.value = false
         }
@@ -575,38 +568,63 @@ export default {
         
         loading.value = true
         
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // if (isEditMode.value) {
-        //   await axios.put(`/api/indicators/${editingIndicator.value.id}`, indicatorForm)
-        // } else {
-        //   await axios.post('/api/indicators', indicatorForm)
-        // }
-        
-        // 模拟保存成功
-        const userInfo = getUserInfo()
-        const newIndicator = {
-          ...indicatorForm,
-          id: isEditMode.value ? editingIndicator.value.id : Date.now().toString(),
-          creator_name: isEditMode.value ? editingIndicator.value.creator_name : userInfo.user_name,
-          create_time: isEditMode.value ? editingIndicator.value.create_time : new Date().toLocaleString('zh-CN')
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          router.push('/login')
+          return
         }
         
+        // 准备提交数据，使用后端期望的字段名
+        const submitData = {
+          indicator_name: indicatorForm.indicator_name,
+          calculation_method: indicatorForm.calculation_method,
+          description: indicatorForm.description || '',
+          is_active: indicatorForm.is_active
+        }
+        
+        let response
         if (isEditMode.value) {
-          // 更新现有指标
-          const index = indicators.value.findIndex(i => i.id === editingIndicator.value.id)
-          if (index !== -1) {
-            indicators.value[index] = newIndicator
-          }
+          // 编辑模式：PUT请求
+          const indicatorId = `${editingIndicator.value.creator_name}_${editingIndicator.value.indicator_name}`
+          response = await axios.put(`/api/indicators/${indicatorId}`, submitData, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
         } else {
-          // 添加新指标
-          indicators.value.unshift(newIndicator)
+          // 新建模式：POST请求
+          response = await axios.post('/api/indicators', submitData, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
         }
         
-        ElMessage.success(isEditMode.value ? '指标更新成功' : '指标添加成功')
-        indicatorDialogVisible.value = false
+        if (response.data) {
+          ElMessage.success(isEditMode.value ? '指标更新成功' : '指标创建成功')
+          
+          // 关闭弹窗
+          handleIndicatorDialogClose()
+          
+          // 刷新列表
+          await fetchIndicators()
+        }
+        
       } catch (error) {
         console.error('保存指标失败:', error)
-        ElMessage.error('保存指标失败，请重试')
+        if (error.response) {
+          if (error.response.status === 401) {
+            ElMessage.error('登录已过期，请重新登录')
+            router.push('/login')
+          } else {
+            ElMessage.error(`保存指标失败: ${error.response.data.message || error.response.statusText}`)
+          }
+        } else {
+          ElMessage.error('保存指标失败，请重试')
+        }
       } finally {
         loading.value = false
       }
@@ -617,16 +635,35 @@ export default {
       try {
         loading.value = true
         
-        // 这里使用模拟更新，实际开发中应替换为真实的API调用
-        // await axios.put(`/api/indicators/${indicator.id}/status`, { is_active: indicator.is_active })
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          router.push('/login')
+          return
+        }
         
-        // 模拟更新成功
+        const indicatorId = `${indicator.creator_name}_${indicator.indicator_name}`
+        await axios.put(`/api/indicators/${indicatorId}/toggle-status`, {}, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
         ElMessage.success(`指标${indicator.is_active ? '启用' : '禁用'}成功`)
       } catch (error) {
         console.error('切换指标状态失败:', error)
         // 恢复原状态
         indicator.is_active = !indicator.is_active
-        ElMessage.error('切换指标状态失败，请重试')
+        if (error.response) {
+          if (error.response.status === 401) {
+            ElMessage.error('登录已过期，请重新登录')
+            router.push('/login')
+          } else {
+            ElMessage.error(`切换指标状态失败: ${error.response.data.message || error.response.statusText}`)
+          }
+        } else {
+          ElMessage.error('切换指标状态失败，请重试')
+        }
       } finally {
         loading.value = false
       }
@@ -852,11 +889,30 @@ export default {
     const handleSizeChange = (newSize) => {
       pageSize.value = newSize
       currentPage.value = 1
+      fetchIndicators()
     }
     
     const handleCurrentChange = (newCurrent) => {
       currentPage.value = newCurrent
+      fetchIndicators()
     }
+    
+    // 监听筛选条件变化 (不包括搜索关键字，因为搜索需要防抖)
+    watch([indicatorType, isActive, currentPage, pageSize], () => {
+      fetchIndicators()
+    })
+    
+    // 搜索关键字使用防抖
+    let searchTimer = null
+    watch(searchKeyword, () => {
+      if (searchTimer) {
+        clearTimeout(searchTimer)
+      }
+      searchTimer = setTimeout(() => {
+        currentPage.value = 1 // 搜索时重置到第一页
+        fetchIndicators()
+      }, 500) // 500ms防抖
+    })
     
     onMounted(() => {
       fetchIndicators()

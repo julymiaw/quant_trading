@@ -110,9 +110,9 @@ class DataPreparer:
     def get_strategy_params(
         self, creator_name: str, strategy_name: str
     ) -> List[Tuple[str, str]]:
-        # 查询StrategyParamRel，返回所有参数 (param_creator_name, param_id)
+        # 查询StrategyParamRel，返回所有参数 (param_creator_name, param_name)
         sql = """
-            SELECT param_creator_name, param_id
+            SELECT param_creator_name, param_name
             FROM StrategyParamRel
             WHERE strategy_creator_name=%s AND strategy_name=%s
         """
@@ -120,18 +120,18 @@ class DataPreparer:
             cur.execute(sql, (creator_name, strategy_name))
             return list(cur.fetchall())
 
-    def get_param_info(self, creator_name: str, param_id: str) -> Dict:
+    def get_param_info(self, creator_name: str, param_name: str) -> Dict:
         # 查询Param表，返回参数详情
         sql = """
             SELECT data_id, param_type, pre_period, post_period, agg_func
             FROM Param
-            WHERE creator_name=%s AND param_id=%s
+            WHERE creator_name=%s AND param_name=%s
         """
         with self.conn.cursor() as cur:
-            cur.execute(sql, (creator_name, param_id))
+            cur.execute(sql, (creator_name, param_name))
             row = cur.fetchone()
             if not row:
-                raise ValueError(f"未找到参数 {creator_name}.{param_id}")
+                raise ValueError(f"未找到参数 {creator_name}.{param_name}")
             return {
                 "data_id": row[0],
                 "param_type": row[1],
@@ -143,9 +143,9 @@ class DataPreparer:
     def get_indicator_params(
         self, creator_name: str, indicator_name: str
     ) -> List[Tuple[str, str]]:
-        # 查询IndicatorParamRel，返回所有参数 (param_creator_name, param_id)
+        # 查询IndicatorParamRel，返回所有参数 (param_creator_name, param_name)
         sql = """
-            SELECT param_creator_name, param_id
+            SELECT param_creator_name, param_name
             FROM IndicatorParamRel
             WHERE indicator_creator_name=%s AND indicator_name=%s
         """
@@ -201,7 +201,7 @@ class DataPreparer:
     ) -> Dict:
         """
         递归构建依赖DAG，返回每个节点的最大访问范围
-        节点格式：("param", creator_name, param_id) 或 ("indicator", creator_name, indicator_name) 或 ("table", data_id)
+        节点格式：("param", creator_name, param_name) 或 ("indicator", creator_name, indicator_name) 或 ("table", data_id)
         返回：
             {
                 "order": [节点, ...],  # 后序遍历去重后的计算顺序
@@ -221,14 +221,14 @@ class DataPreparer:
             else:
                 ranges[node] = (cur_start, cur_end)
 
-        def dfs_param(creator_name, param_id, cur_start, cur_end):
-            node = ("param", creator_name, param_id)
+        def dfs_param(creator_name, param_name, cur_start, cur_end):
+            node = ("param", creator_name, param_name)
             # 查询参数信息（带缓存）
-            if (creator_name, param_id) not in self.param_cache:
-                param_info = self.get_param_info(creator_name, param_id)
-                self.param_cache[(creator_name, param_id)] = param_info
+            if (creator_name, param_name) not in self.param_cache:
+                param_info = self.get_param_info(creator_name, param_name)
+                self.param_cache[(creator_name, param_name)] = param_info
             else:
-                param_info = self.param_cache[(creator_name, param_id)]
+                param_info = self.param_cache[(creator_name, param_name)]
             # 先更新range（用当前访问范围）
             update_range(node, cur_start, cur_end)
             pre_period = param_info["pre_period"] or 0
@@ -404,16 +404,16 @@ class DataPreparer:
         local_env = {}
         exec(indicator_info["calculation_method"], {}, local_env)
         calc_func = local_env.get("calculation_method")
-        # 构造params字典，key为"creator.param_id"，value为DataFrame（index=[ts_code, trade_date]）
-        # param_dict: {("param", creator, param_id): DataFrame}
+        # 构造params字典，key为"creator.param_name"，value为DataFrame（index=[ts_code, trade_date]）
+        # param_dict: {("param", creator, param_name): DataFrame}
         # 先合并所有参数为一个大表
         param_keys = [k for k in param_dict if k[0] == "param"]
-        # 以股票和日期为索引，构造params["creator.param_id"][ts_code, trade_date]
+        # 以股票和日期为索引，构造params["creator.param_name"][ts_code, trade_date]
         params = {}
         for k in param_keys:
-            creator, param_id = k[1], k[2]
+            creator, param_name = k[1], k[2]
             df = param_dict[k]
-            params[f"{creator}.{param_id}"] = df["value"]
+            params[f"{creator}.{param_name}"] = df["value"]
         # 结果DataFrame
         index = pd.MultiIndex.from_product(
             [stock_list, date_list], names=["ts_code", "trade_date"]

@@ -808,10 +808,10 @@ def get_indicators(current_user):
     try:
         # 获取查询参数
         page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 10))
+        page_size = int(request.args.get('limit', 10))  # 前端发送的是 limit
         search_keyword = request.args.get('search', '').strip()
-        indicator_type_filter = request.args.get('indicator_type', 'my')  # my, system, public, all
-        is_active = request.args.get('is_active', 'all')  # all, true, false
+        creator_name_filter = request.args.get('creator_name', '').strip()  # 前端直接发送creator_name
+        is_enabled = request.args.get('is_enabled', 'all')  # 前端发送的是 is_enabled
         
         connection = get_db_connection()
         try:
@@ -835,7 +835,7 @@ def get_indicators(current_user):
                     calculation_method,
                     description,
                     is_active,
-                    DATE_FORMAT(NOW(), '%%Y-%%m-%%d %%H:%%i:%%s') as create_time
+                    DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as create_time
                 FROM Indicator
                 WHERE 1=1
                 """
@@ -844,21 +844,15 @@ def get_indicators(current_user):
                 where_conditions = []
                 query_params = []
                 
-                # 根据指标类型筛选
-                if indicator_type_filter == 'my':
+                # 根据创建者筛选（前端直接发送creator_name）
+                if creator_name_filter:
                     where_conditions.append("creator_name = %s")
-                    query_params.append(current_user_name)
-                elif indicator_type_filter == 'system':
-                    where_conditions.append("creator_name = 'system'")
-                elif indicator_type_filter == 'public':
-                    where_conditions.append("creator_name != %s")
-                    query_params.append(current_user_name)
-                # indicator_type_filter == 'all' 时不添加条件
+                    query_params.append(creator_name_filter)
                 
                 # 根据状态筛选
-                if is_active != 'all':
+                if is_enabled != 'all':
                     where_conditions.append("is_active = %s")
-                    query_params.append(is_active == 'true')
+                    query_params.append(int(is_enabled) == 1)
                 
                 # 根据搜索关键词筛选
                 if search_keyword:
@@ -900,11 +894,12 @@ def get_indicators(current_user):
                     })
                 
                 return jsonify({
-                    'data': {
-                        'indicators': formatted_indicators,
+                    'data': formatted_indicators,
+                    'pagination': {
                         'total': total,
                         'page': page,
-                        'page_size': page_size
+                        'page_size': page_size,
+                        'pages': (total + page_size - 1) // page_size
                     },
                     'message': '获取指标列表成功'
                 }), 200

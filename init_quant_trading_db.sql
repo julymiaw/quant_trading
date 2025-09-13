@@ -31,12 +31,15 @@ CREATE TABLE User (
 -- =============================================
 -- 2. 创建指标表
 -- =============================================
+
 CREATE TABLE Indicator (
     creator_name VARCHAR(50) NOT NULL COMMENT '指标创建者用户名，引用User.user_name',
     indicator_name VARCHAR(100) NOT NULL COMMENT '指标名称',
     calculation_method TEXT NOT NULL COMMENT '指标计算函数',
     description TEXT COMMENT '指标说明',
     is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    creation_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (creator_name, indicator_name),
     INDEX idx_creator_name (creator_name),
     INDEX idx_is_active (is_active),
@@ -74,33 +77,35 @@ CREATE TABLE Strategy (
 -- =============================================
 CREATE TABLE Param (
     creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
-    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
+    param_name VARCHAR(50) NOT NULL COMMENT '参数唯一名称',
     data_id VARCHAR(100) NOT NULL COMMENT '数据来源ID，如daily.close或system.MACD',
     param_type ENUM('table', 'indicator') NOT NULL COMMENT '参数类型：table=查Tushare表，indicator=引用其他指标',
     pre_period INT DEFAULT 0 COMMENT '向前取历史天数',
     post_period INT DEFAULT 0 COMMENT '向后预测天数',
     agg_func VARCHAR(50) DEFAULT NULL COMMENT '聚合函数，如SMA、EMA、MAX等',
-    PRIMARY KEY (creator_name, param_id)
+    creation_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (creator_name, param_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='参数定义表';
 
 CREATE TABLE IndicatorParamRel (
     indicator_creator_name VARCHAR(50) NOT NULL COMMENT '指标创建者用户名',
     indicator_name VARCHAR(100) NOT NULL COMMENT '指标名称',
     param_creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
-    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
-    PRIMARY KEY (indicator_creator_name, indicator_name, param_creator_name, param_id),
+    param_name VARCHAR(50) NOT NULL COMMENT '参数唯一名称',
+    PRIMARY KEY (indicator_creator_name, indicator_name, param_creator_name, param_name),
     CONSTRAINT fk_rel_indicator FOREIGN KEY (indicator_creator_name, indicator_name) REFERENCES Indicator(creator_name, indicator_name),
-    CONSTRAINT fk_rel_param_indicator FOREIGN KEY (param_creator_name, param_id) REFERENCES Param(creator_name, param_id)
+    CONSTRAINT fk_rel_param_indicator FOREIGN KEY (param_creator_name, param_name) REFERENCES Param(creator_name, param_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='指标与参数关系表';
 
 CREATE TABLE StrategyParamRel (
     strategy_creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名',
     strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称',
     param_creator_name VARCHAR(50) NOT NULL COMMENT '参数创建者用户名',
-    param_id VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
-    PRIMARY KEY (strategy_creator_name, strategy_name, param_creator_name, param_id),
+    param_name VARCHAR(50) NOT NULL COMMENT '参数唯一ID',
+    PRIMARY KEY (strategy_creator_name, strategy_name, param_creator_name, param_name),
     CONSTRAINT fk_rel_strategy FOREIGN KEY (strategy_creator_name, strategy_name) REFERENCES Strategy(creator_name, strategy_name),
-    CONSTRAINT fk_rel_param_strategy FOREIGN KEY (param_creator_name, param_id) REFERENCES Param(creator_name, param_id)
+    CONSTRAINT fk_rel_param_strategy FOREIGN KEY (param_creator_name, param_name) REFERENCES Param(creator_name, param_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='策略与参数关系表';
 
 -- =============================================
@@ -197,7 +202,7 @@ INSERT INTO User (user_id, user_name, user_password, user_role, user_status, use
 VALUES ('1', 'system', '******', 'admin', 'active', '2025-09-01');
 
 -- 2. 插入参数表数据（所有参数，先插入参数实体）
-INSERT INTO Param (creator_name, param_id, data_id, param_type, pre_period, post_period, agg_func)
+INSERT INTO Param (creator_name, param_name, data_id, param_type, pre_period, post_period, agg_func)
 VALUES
 ('system', 'daily_ema_12', 'daily.close', 'table', 12, 0, 'EMA'),
 ('system', 'daily_ema_26', 'daily.close', 'table', 26, 0, 'EMA'),
@@ -275,13 +280,13 @@ INSERT INTO Strategy (
 );
 
 -- 5. 插入指标与参数关系表（MACD指标参数）
-INSERT INTO IndicatorParamRel (indicator_creator_name, indicator_name, param_creator_name, param_id)
+INSERT INTO IndicatorParamRel (indicator_creator_name, indicator_name, param_creator_name, param_name)
 VALUES
 ('system', 'MACD', 'system', 'daily_ema_12'),
 ('system', 'MACD', 'system', 'daily_ema_26');
 
 -- 6. 插入策略与参数关系表（小市值策略、双均线策略、MACD策略、风控函数参数）
-INSERT INTO StrategyParamRel (strategy_creator_name, strategy_name, param_creator_name, param_id)
+INSERT INTO StrategyParamRel (strategy_creator_name, strategy_name, param_creator_name, param_name)
 VALUES
 -- 小市值策略参数
 ('system', '小市值策略', 'system', 'total_mv'),

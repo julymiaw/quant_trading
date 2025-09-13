@@ -158,12 +158,12 @@ class DatabaseManager:
         try:
             if query:
                 cursor.execute(
-                    "SELECT param_id FROM Param WHERE creator_name = %s AND param_id LIKE %s",
+                    "SELECT param_name FROM Param WHERE creator_name = %s AND param_name LIKE %s",
                     (creator_name, f"{query}%"),
                 )
             else:
                 cursor.execute(
-                    "SELECT param_id FROM Param WHERE creator_name = %s",
+                    "SELECT param_name FROM Param WHERE creator_name = %s",
                     (creator_name,),
                 )
             return [row[0] for row in cursor.fetchall()]
