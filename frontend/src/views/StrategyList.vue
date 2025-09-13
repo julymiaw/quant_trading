@@ -180,6 +180,22 @@
         <el-form-item label="策略描述" prop="strategy_desc">
           <el-input v-model="strategyForm.strategy_desc" type="textarea" placeholder="请输入策略描述" />
         </el-form-item>
+        <el-form-item label="选股函数" prop="select_func">
+          <el-input 
+            v-model="strategyForm.select_func" 
+            type="textarea" 
+            :rows="8"
+            placeholder="请输入选股函数代码（Python）" 
+          />
+        </el-form-item>
+        <el-form-item label="风控函数" prop="risk_control_func">
+          <el-input 
+            v-model="strategyForm.risk_control_func" 
+            type="textarea" 
+            :rows="6"
+            placeholder="请输入风险控制函数代码（可选）" 
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -192,7 +208,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh } from '@element-plus/icons-vue'
@@ -232,7 +248,9 @@ export default {
       rebalance_interval: 5,
       buy_fee_rate: 0.001,
       sell_fee_rate: 0.001,
-      strategy_desc: ''
+      strategy_desc: '',
+      select_func: '',
+      risk_control_func: ''
     })
     
     // 表单验证规则
@@ -243,6 +261,9 @@ export default {
       ],
       scope_type: [
         { required: true, message: '请选择生效范围', trigger: 'change' }
+      ],
+      select_func: [
+        { required: true, message: '请输入选股函数代码', trigger: 'blur' }
       ],
       scope_id: [
         {
@@ -300,43 +321,9 @@ export default {
       return userInfo && strategy.creator_name === userInfo.user_name
     }
     
-    // 计算筛选后的策略列表
+    // 计算筛选后的策略列表（后端已处理分页和筛选，前端直接显示）
     const filteredStrategies = computed(() => {
-      let result = [...strategies.value]
-      
-      // 根据策略类型筛选
-      if (strategyType.value === 'my') {
-        const userInfo = getUserInfo()
-        if (userInfo) {
-          result = result.filter(s => s.creator_name === userInfo.user_name)
-        }
-      } else if (strategyType.value === 'system') {
-        result = result.filter(s => s.creator_name === 'system')
-      } else if (strategyType.value === 'public') {
-        result = result.filter(s => s.public)
-      }
-      
-      // 根据搜索关键词筛选
-      if (searchKeyword.value) {
-        const keyword = searchKeyword.value.toLowerCase()
-        result = result.filter(s => 
-          s.strategy_name.toLowerCase().includes(keyword) ||
-          (s.strategy_desc && s.strategy_desc.toLowerCase().includes(keyword))
-        )
-      }
-      
-      // 根据生效范围筛选
-      if (scopeType.value !== 'all') {
-        result = result.filter(s => s.scope_type === scopeType.value)
-      }
-      
-      // 更新总数
-      total.value = result.length
-      
-      // 分页
-      const start = (currentPage.value - 1) * pageSize.value
-      const end = start + pageSize.value
-      return result.slice(start, end)
+      return strategies.value
     })
     
     // 是否显示scope_id列
@@ -349,74 +336,39 @@ export default {
       try {
         loading.value = true
         
-        // 这里使用模拟数据，实际开发中应替换为真实的API调用
-        // const response = await axios.get('/api/strategies')
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          return
+        }
         
-        // 模拟策略数据
-        const mockStrategies = [
-          {
-            id: '1',
-            creator_name: 'system',
-            strategy_name: '小市值策略',
-            public: true,
-            scope_type: 'all',
-            scope_id: '',
-            position_count: 3,
-            rebalance_interval: 5,
-            buy_fee_rate: 0.0003,
-            sell_fee_rate: 0.0013,
-            strategy_desc: '市值20-30亿，市值最小的3只',
-            create_time: '2025-09-01 00:00:00',
-            update_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '2',
-            creator_name: 'system',
-            strategy_name: '双均线策略',
-            public: true,
-            scope_type: 'single_stock',
-            scope_id: '000001.XSHE',
-            position_count: 1,
-            rebalance_interval: 1,
-            buy_fee_rate: 0.0003,
-            sell_fee_rate: 0.0013,
-            strategy_desc: '5日均线上穿/下穿日线，择时买卖',
-            create_time: '2025-09-01 00:00:00',
-            update_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '3',
-            creator_name: 'system',
-            strategy_name: 'MACD策略',
-            public: true,
-            scope_type: 'single_stock',
-            scope_id: '000001.XSHE',
-            position_count: 1,
-            rebalance_interval: 1,
-            buy_fee_rate: 0.0003,
-            sell_fee_rate: 0.0013,
-            strategy_desc: '9日MACD线下穿日线买入，上穿卖出',
-            create_time: '2025-09-01 00:00:00',
-            update_time: '2025-09-01 00:00:00'
-          },
-          {
-            id: '4',
-            creator_name: 'test_user',
-            strategy_name: '自定义动量策略',
-            public: false,
-            scope_type: 'index',
-            scope_id: '000300.XSHG',
-            position_count: 10,
-            rebalance_interval: 10,
-            buy_fee_rate: 0.001,
-            sell_fee_rate: 0.001,
-            strategy_desc: '选择沪深300指数中动量最强的10只股票',
-            create_time: '2025-09-10 10:00:00',
-            update_time: '2025-09-10 10:00:00'
+        // 构建查询参数
+        const params = {
+          page: currentPage.value,
+          page_size: pageSize.value,
+          strategy_type: strategyType.value,
+          scope_type: scopeType.value === 'all' ? 'all' : scopeType.value
+        }
+        
+        if (searchKeyword.value) {
+          params.search = searchKeyword.value
+        }
+        
+        // 调用真实的API
+        const response = await axios.get('http://localhost:5000/api/strategies', {
+          params: params,
+          headers: {
+            'Authorization': `Bearer ${token}`
           }
-        ]
+        })
         
-        strategies.value = mockStrategies
+        if (response.data.code === 200) {
+          strategies.value = response.data.data.strategies || []
+          total.value = response.data.data.total || 0
+        } else {
+          throw new Error(response.data.message || '获取策略列表失败')
+        }
       } catch (error) {
         console.error('获取策略列表失败:', error)
         ElMessage.error('获取策略列表失败，请重试')
@@ -456,7 +408,9 @@ export default {
         rebalance_interval: 5,
         buy_fee_rate: 0.001,
         sell_fee_rate: 0.001,
-        strategy_desc: ''
+        strategy_desc: '',
+        select_func: '',
+        risk_control_func: ''
       })
       
       strategyDialogVisible.value = true
@@ -477,7 +431,9 @@ export default {
         rebalance_interval: strategy.rebalance_interval || 5,
         buy_fee_rate: strategy.buy_fee_rate || 0.001,
         sell_fee_rate: strategy.sell_fee_rate || 0.001,
-        strategy_desc: strategy.strategy_desc || ''
+        strategy_desc: strategy.strategy_desc || '',
+        select_func: strategy.select_func || '',
+        risk_control_func: strategy.risk_control_func || ''
       })
       
       strategyDialogVisible.value = true
@@ -497,16 +453,33 @@ export default {
         try {
           loading.value = true
           
-          // 这里使用模拟删除，实际开发中应替换为真实的API调用
-          // await axios.delete(`/api/strategies/${strategy.id}`)
+          // 获取用户token
+          const token = localStorage.getItem('token')
+          if (!token) {
+            ElMessage.error('请先登录')
+            return
+          }
           
-          // 模拟删除成功
-          strategies.value = strategies.value.filter(s => s.id !== strategy.id)
+          // 调用删除API
+          const response = await axios.delete(
+            `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          )
           
-          ElMessage.success('策略删除成功')
+          if (response.data.code === 200) {
+            ElMessage.success('策略删除成功')
+            // 重新获取策略列表
+            await fetchStrategies()
+          } else {
+            throw new Error(response.data.message || '删除策略失败')
+          }
         } catch (error) {
           console.error('删除策略失败:', error)
-          ElMessage.error('删除策略失败，请重试')
+          ElMessage.error(error.response?.data?.message || '删除策略失败，请重试')
         } finally {
           loading.value = false
         }
@@ -533,7 +506,9 @@ export default {
         rebalance_interval: strategy.rebalance_interval || 5,
         buy_fee_rate: strategy.buy_fee_rate || 0.001,
         sell_fee_rate: strategy.sell_fee_rate || 0.001,
-        strategy_desc: strategy.strategy_desc || ''
+        strategy_desc: strategy.strategy_desc || '',
+        select_func: strategy.select_func || '',
+        risk_control_func: strategy.risk_control_func || ''
       })
       
       isEditMode.value = false
@@ -551,39 +526,56 @@ export default {
         
         loading.value = true
         
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // if (isEditMode.value) {
-        //   await axios.put(`/api/strategies/${editingStrategy.value.id}`, strategyForm)
-        // } else {
-        //   await axios.post('/api/strategies', strategyForm)
-        // }
-        
-        // 模拟保存成功
-        const userInfo = getUserInfo()
-        const newStrategy = {
-          ...strategyForm,
-          id: isEditMode.value ? editingStrategy.value.id : Date.now().toString(),
-          creator_name: isEditMode.value ? editingStrategy.value.creator_name : userInfo.user_name,
-          create_time: isEditMode.value ? editingStrategy.value.create_time : new Date().toLocaleString('zh-CN'),
-          update_time: new Date().toLocaleString('zh-CN')
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          return
         }
         
+        // 准备提交的数据
+        const submitData = {
+          ...strategyForm
+        }
+        
+        let response
         if (isEditMode.value) {
-          // 更新现有策略
-          const index = strategies.value.findIndex(s => s.id === editingStrategy.value.id)
-          if (index !== -1) {
-            strategies.value[index] = newStrategy
-          }
+          // 更新策略
+          response = await axios.put(
+            `http://localhost:5000/api/strategies/${editingStrategy.value.creator_name}/${editingStrategy.value.strategy_name}`,
+            submitData,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          )
         } else {
-          // 添加新策略
-          strategies.value.unshift(newStrategy)
+          // 创建新策略
+          response = await axios.post(
+            'http://localhost:5000/api/strategies',
+            submitData,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          )
         }
         
-        ElMessage.success(isEditMode.value ? '策略更新成功' : '策略添加成功')
-        strategyDialogVisible.value = false
+        if (response.data.code === 200) {
+          ElMessage.success(isEditMode.value ? '策略更新成功' : '策略创建成功')
+          strategyDialogVisible.value = false
+          // 重新获取策略列表
+          await fetchStrategies()
+        } else {
+          throw new Error(response.data.message || '保存策略失败')
+        }
       } catch (error) {
         console.error('保存策略失败:', error)
-        ElMessage.error('保存策略失败，请重试')
+        ElMessage.error(error.response?.data?.message || '保存策略失败，请重试')
       } finally {
         loading.value = false
       }
@@ -603,11 +595,31 @@ export default {
     const handleSizeChange = (newSize) => {
       pageSize.value = newSize
       currentPage.value = 1
+      fetchStrategies()
     }
     
     const handleCurrentChange = (newCurrent) => {
       currentPage.value = newCurrent
+      fetchStrategies()
     }
+    
+    // 监听筛选条件变化
+    watch([strategyType, scopeType], () => {
+      currentPage.value = 1
+      fetchStrategies()
+    })
+    
+    // 监听搜索关键词变化（防抖处理）
+    let searchTimeout = null
+    watch(searchKeyword, () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
+      searchTimeout = setTimeout(() => {
+        currentPage.value = 1
+        fetchStrategies()
+      }, 500)
+    })
     
     onMounted(() => {
       fetchStrategies()

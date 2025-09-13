@@ -387,51 +387,42 @@ export default {
         loading.value = true
         const { creatorName, strategyName } = route.params
         
-        // 这里使用模拟数据，实际开发中应替换为真实的API调用
-        // const response = await axios.get(`/api/strategies/${creatorName}/${strategyName}`)
-        
-        // 模拟策略详情数据
-        const mockStrategy = {
-          creator_name: creatorName,
-          strategy_name: strategyName,
-          public: true,
-          scope_type: 'all',
-          scope_id: '',
-          position_count: 3,
-          rebalance_interval: 5,
-          buy_fee_rate: 0.0003,
-          sell_fee_rate: 0.0013,
-          strategy_desc: '市值20-30亿，市值最小的3只股票',
-          select_func: `def select_stocks(context, data):\n    # 从市场中获取所有股票\n    all_stocks = data.get_all_securities('stock', '20200101').index\n    \n    # 筛选市值在20亿到30亿之间的股票\n    q = query(\n        valuation.code,\n        valuation.market_cap\n    ).filter(\n        valuation.market_cap > 20,\n        valuation.market_cap < 30\n    )\n    \n    # 获取查询结果并按市值排序\n    df = get_fundamentals(q, date='20200101')\n    df = df.sort_values('market_cap')\n    \n    # 返回市值最小的3只股票\n    return df['code'][:3].tolist()`,
-          risk_control_func: `def risk_control(context, data):\n    # 获取当前持仓\n    positions = context.portfolio.positions\n    \n    # 检查每个持仓股票\n    for stock in list(positions.keys()):\n        # 获取股票最新价格\n        price = data.current(stock, 'close')\n        \n        # 如果股票价格低于成本价的90%，卖出止损\n        if price < positions[stock].avg_cost * 0.9:\n            order_target_value(stock, 0)\n            log.info("止损卖出: %s, 价格: %s, 成本价: %s" % (stock, price, positions[stock].avg_cost))\n    \n    # 返回调整后的持仓\n    return list(context.portfolio.positions.keys())`,
-          create_time: '2025-09-01 00:00:00',
-          update_time: '2025-09-01 00:00:00'
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          router.push('/login')
+          return
         }
         
-        // 根据路由参数调整模拟数据
-        if (creatorName === 'test_user' && strategyName === '自定义动量策略') {
-          mockStrategy.creator_name = 'test_user'
-          mockStrategy.strategy_name = '自定义动量策略'
-          mockStrategy.public = false
-          mockStrategy.scope_type = 'index'
-          mockStrategy.scope_id = '000300.XSHG'
-          mockStrategy.position_count = 10
-          mockStrategy.rebalance_interval = 10
-          mockStrategy.strategy_desc = '选择沪深300指数中动量最强的10只股票'
-          mockStrategy.select_func = `def select_stocks(context, data):\n    # 获取沪深300指数成分股\n    index_stocks = get_index_stocks('000300.XSHG', date=context.current_dt.strftime('%Y%m%d'))\n    \n    # 计算过去20天的收益率\n    returns = {}  \n    for stock in index_stocks:\n        try:\n            # 获取过去20天的收盘价\n            prices = attribute_history(stock, 20, '1d', ['close'], skip_paused=True)\n            if len(prices) >= 10:\n                # 计算收益率 = (最新价 - 20天前价格) / 20天前价格\n                returns[stock] = (prices['close'][-1] - prices['close'][0]) / prices['close'][0]\n        except:\n            pass\n    \n    # 按收益率排序，选择前10只\n    sorted_stocks = sorted(returns.items(), key=lambda x: x[1], reverse=True)\n    selected_stocks = [stock for stock, _ in sorted_stocks[:10]]\n    \n    return selected_stocks`
-          mockStrategy.risk_control_func = ''
-          mockStrategy.create_time = '2025-09-10 10:00:00'
-          mockStrategy.update_time = '2025-09-10 10:00:00'
+        // 调用真实的API获取策略详情
+        const response = await axios.get(
+          `http://localhost:5000/api/strategies/${creatorName}/${strategyName}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        )
+        
+        if (response.data.code === 200) {
+          Object.assign(strategy, response.data.data)
+          // 获取策略参数
+          fetchStrategyParams()
+        } else {
+          throw new Error(response.data.message || '获取策略详情失败')
         }
-        
-        // 更新策略数据
-        Object.assign(strategy, mockStrategy)
-        
-        // 获取策略参数
-        fetchStrategyParams()
       } catch (error) {
         console.error('获取策略详情失败:', error)
-        ElMessage.error('获取策略详情失败，请重试')
+        if (error.response?.status === 404) {
+          ElMessage.error('策略不存在')
+          router.push('/strategy-list')
+        } else if (error.response?.status === 403) {
+          ElMessage.error('无权限访问此策略')
+          router.push('/strategy-list')
+        } else {
+          ElMessage.error(error.response?.data?.message || '获取策略详情失败，请重试')
+        }
       } finally {
         loading.value = false
       }
@@ -440,33 +431,31 @@ export default {
     // 获取策略参数
     const fetchStrategyParams = async () => {
       try {
-        // 这里使用模拟数据，实际开发中应替换为真实的API调用
-        // const response = await axios.get(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`)
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          return
+        }
         
-        // 模拟策略参数数据
-        const mockParams = [
+        // 调用真实的API获取策略参数
+        const response = await axios.get(
+          `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/params`,
           {
-            param_name: 'market_cap',
-            data_id: 'valuation.market_cap',
-            param_type: 'table',
-            pre_period: 0,
-            post_period: 0,
-            agg_func: null
-          },
-          {
-            param_name: 'close_price',
-            data_id: 'daily.close',
-            param_type: 'table',
-            pre_period: 20,
-            post_period: 0,
-            agg_func: 'AVG'
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
           }
-        ]
+        )
         
-        strategyParams.value = mockParams
+        if (response.data.code === 200) {
+          strategyParams.value = response.data.data || []
+        } else {
+          console.error('获取策略参数失败:', response.data.message)
+          strategyParams.value = []
+        }
       } catch (error) {
         console.error('获取策略参数失败:', error)
-        ElMessage.error('获取策略参数失败，请重试')
+        strategyParams.value = []
       }
     }
     
@@ -495,18 +484,51 @@ export default {
         
         loading.value = true
         
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // await axios.put(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/basic-info`, editBasicInfoForm)
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          return
+        }
         
-        // 更新策略数据
-        Object.assign(strategy, editBasicInfoForm)
-        strategy.update_time = new Date().toLocaleString('zh-CN')
+        // 准备更新数据 - 包含完整的策略信息
+        const updateData = {
+          strategy_name: editBasicInfoForm.strategy_name,
+          public: editBasicInfoForm.public,
+          scope_type: strategy.scope_type,
+          scope_id: strategy.scope_id,
+          select_func: strategy.select_func,
+          risk_control_func: strategy.risk_control_func,
+          position_count: strategy.position_count,
+          rebalance_interval: strategy.rebalance_interval,
+          buy_fee_rate: strategy.buy_fee_rate,
+          sell_fee_rate: strategy.sell_fee_rate,
+          strategy_desc: editBasicInfoForm.strategy_desc
+        }
         
-        ElMessage.success('基本信息更新成功')
-        editBasicInfoDialogVisible.value = false
+        // 调用更新API
+        const response = await axios.put(
+          `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}`,
+          updateData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        
+        if (response.data.code === 200) {
+          // 更新本地策略数据
+          Object.assign(strategy, editBasicInfoForm)
+          ElMessage.success('基本信息更新成功')
+          editBasicInfoDialogVisible.value = false
+        } else {
+          throw new Error(response.data.message || '更新基本信息失败')
+        }
       } catch (error) {
         console.error('保存基本信息失败:', error)
-        ElMessage.error('保存基本信息失败，请重试')
+        ElMessage.error(error.response?.data?.message || '保存基本信息失败，请重试')
       } finally {
         loading.value = false
       }
@@ -528,18 +550,51 @@ export default {
       try {
         loading.value = true
         
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // await axios.put(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/code`, editCodeForm)
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          ElMessage.error('请先登录')
+          return
+        }
         
-        // 更新策略数据
-        Object.assign(strategy, editCodeForm)
-        strategy.update_time = new Date().toLocaleString('zh-CN')
+        // 准备更新数据 - 包含完整的策略信息
+        const updateData = {
+          strategy_name: strategy.strategy_name,
+          public: strategy.public,
+          scope_type: strategy.scope_type,
+          scope_id: strategy.scope_id,
+          select_func: editCodeForm.select_func,
+          risk_control_func: editCodeForm.risk_control_func,
+          position_count: strategy.position_count,
+          rebalance_interval: strategy.rebalance_interval,
+          buy_fee_rate: strategy.buy_fee_rate,
+          sell_fee_rate: strategy.sell_fee_rate,
+          strategy_desc: strategy.strategy_desc
+        }
         
-        ElMessage.success('策略代码更新成功')
-        editCodeDialogVisible.value = false
+        // 调用更新API
+        const response = await axios.put(
+          `http://localhost:5000/api/strategies/${strategy.creator_name}/${strategy.strategy_name}`,
+          updateData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        
+        if (response.data.code === 200) {
+          // 更新本地策略数据
+          Object.assign(strategy, editCodeForm)
+          ElMessage.success('策略代码更新成功')
+          editCodeDialogVisible.value = false
+        } else {
+          throw new Error(response.data.message || '更新策略代码失败')
+        }
       } catch (error) {
         console.error('保存策略代码失败:', error)
-        ElMessage.error('保存策略代码失败，请重试')
+        ElMessage.error(error.response?.data?.message || '保存策略代码失败，请重试')
       } finally {
         loading.value = false
       }
@@ -561,34 +616,35 @@ export default {
     }
     
     // 查询数据源
-    const queryDataSources = (queryString, callback) => {
-      // 模拟数据源列表
-      const dataSources = [
-        'valuation.market_cap',
-        'valuation.pe_ratio',
-        'valuation.pb_ratio',
-        'daily.open',
-        'daily.close',
-        'daily.high',
-        'daily.low',
-        'daily.volume',
-        'daily.amount',
-        'indicator.MACD',
-        'indicator.KDJ',
-        'indicator.RSI'
-      ]
-      
-      // 根据查询字符串过滤
-      const results = queryString
-        ? dataSources.filter(source => source.toLowerCase().includes(queryString.toLowerCase()))
-        : dataSources
-      
-      // 格式化为autocomplete需要的格式
-      const suggestions = results.map(source => ({
-        value: source
-      }))
-      
-      callback(suggestions)
+    const queryDataSources = async (queryString, callback) => {
+      try {
+        // 获取用户token
+        const token = localStorage.getItem('token')
+        if (!token) {
+          callback([])
+          return
+        }
+        
+        // 调用真实的API获取数据源列表
+        const response = await axios.get('http://localhost:5000/api/data-sources', {
+          params: { q: queryString },
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.data.code === 200) {
+          const suggestions = response.data.data.map(source => ({
+            value: source
+          }))
+          callback(suggestions)
+        } else {
+          callback([])
+        }
+      } catch (error) {
+        console.error('获取数据源失败:', error)
+        callback([])
+      }
     }
     
     // 添加参数
