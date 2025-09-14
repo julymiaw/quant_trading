@@ -1,11 +1,11 @@
 <template>
-  <div class="code-editor-container">
+  <div class="code-editor-container" :style="containerInlineStyle">
     <div ref="editorRef" class="code-editor"></div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, onMounted, onUnmounted, watch, computed } from "vue";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { python } from "@codemirror/lang-python";
@@ -43,11 +43,33 @@ export default {
       type: Boolean,
       default: false,
     },
+    // 最小高度（字符串，例如 '120px'）
+    minHeight: {
+      type: String,
+      default: "120px",
+    },
+    // 最小宽度（字符串，例如 '200px'）
+    minWidth: {
+      type: String,
+      default: "200px",
+    },
+    // 可选的外层容器内联样式（用于 dialog 内高度为 100% 时传入）
+    containerStyle: {
+      type: Object,
+      default: () => ({}),
+    },
   },
   emits: ["update:modelValue"],
   setup(props, { emit }) {
     const editorRef = ref(null);
     let editorView = null;
+
+    const containerInlineStyle = computed(() => {
+      return Object.assign({}, props.containerStyle, {
+        ["--code-editor-min-height"]: props.minHeight,
+        ["--code-editor-min-width"]: props.minWidth,
+      });
+    });
 
     const createEditor = () => {
       if (!editorRef.value) return;
@@ -88,12 +110,13 @@ export default {
           EditorView.theme({
             "&": {
               height: props.height,
-              minHeight: "200px",
+              minHeight: props.minHeight,
+              minWidth: props.minWidth,
               fontSize: "14px",
             },
             ".cm-editor": {
               height: "100%",
-              minHeight: "200px",
+              minHeight: props.minHeight,
             },
             ".cm-focused": {
               outline: "none",
@@ -166,6 +189,7 @@ export default {
 
     return {
       editorRef,
+      containerInlineStyle,
     };
   },
 };
@@ -175,17 +199,34 @@ export default {
 .code-editor-container {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  overflow: hidden;
-  min-height: 200px;
+  overflow: auto;
+  min-height: var(--code-editor-min-height, 120px);
+  min-width: var(--code-editor-min-width, 200px);
 }
 
 .code-editor {
   width: 100%;
-  min-height: 200px;
+  height: 100%;
+  min-height: var(--code-editor-min-height, 120px);
 }
 
 .code-editor :deep(.cm-editor) {
   height: 100%;
+}
+
+/* Ensure the internal scroller shows scrollbars and can be scrolled by mouse wheel */
+.code-editor :deep(.cm-scroller) {
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.code-editor :deep(.cm-scroller)::-webkit-scrollbar {
+  width: 10px;
+}
+
+.code-editor :deep(.cm-scroller)::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
 }
 
 .code-editor :deep(.cm-focused) {
