@@ -43,7 +43,7 @@
           </div>
           <div class="info-item">
             <label>是否公开：</label>
-            <el-switch v-model="strategy.public" disabled />
+            <span>{{ strategy.public ? "公开" : "私有" }}</span>
           </div>
           <div class="info-item">
             <label>生效范围：</label>
