@@ -1276,7 +1276,7 @@ export default {
 .strategy-detail-container {
   background-color: white;
   border-radius: 8px;
-  padding: 20px;
+  padding: 20px 0 20px 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   height: 100%;
   display: flex;
@@ -1288,6 +1288,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding-right: 5px;
+  scrollbar-gutter: stable;
 }
 
 .page-header {
@@ -1374,6 +1375,7 @@ export default {
 .code-scrollbar {
   border: 1px solid #e8e8e8;
   border-radius: 4px;
+  scrollbar-gutter: stable;
 }
 
 .code-block {
