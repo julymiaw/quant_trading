@@ -95,15 +95,27 @@
 
       <!-- 策略代码展示 -->
       <el-card
-        class="strategy-code-card"
+        :class="['strategy-code-card', { 'collapsed-card': selectCollapsed }]"
         :loading="loading"
         style="margin-top: 20px">
         <template #header>
           <div class="card-header">
-            <span>选股函数代码</span>
+            <span>选股函数</span>
+            <el-button
+              type="text"
+              @click="toggleSection('select')"
+              class="collapse-btn">
+              <el-icon>
+                <arrow-right v-if="selectCollapsed" />
+                <arrow-down v-else />
+              </el-icon>
+            </el-button>
           </div>
         </template>
-        <el-scrollbar height="400px" class="code-scrollbar">
+        <el-scrollbar
+          v-if="!selectCollapsed"
+          height="400px"
+          class="code-scrollbar">
           <div class="code-editor-wrapper">
             <CodeEditor
               :model-value="strategy.select_func"
@@ -115,16 +127,28 @@
 
       <!-- 风险控制函数代码 -->
       <el-card
-        class="strategy-code-card"
+        :class="['strategy-code-card', { 'collapsed-card': riskCollapsed }]"
         :loading="loading"
         style="margin-top: 20px"
         v-if="strategy.risk_control_func">
         <template #header>
           <div class="card-header">
-            <span>风险控制函数代码</span>
+            <span>风险控制函数</span>
+            <el-button
+              type="text"
+              @click="toggleSection('risk')"
+              class="collapse-btn">
+              <el-icon>
+                <arrow-right v-if="riskCollapsed" />
+                <arrow-down v-else />
+              </el-icon>
+            </el-button>
           </div>
         </template>
-        <el-scrollbar height="400px" class="code-scrollbar">
+        <el-scrollbar
+          v-if="!riskCollapsed"
+          height="400px"
+          class="code-scrollbar">
           <div class="code-editor-wrapper">
             <CodeEditor
               :model-value="strategy.risk_control_func"
@@ -136,61 +160,74 @@
 
       <!-- 参数列表 -->
       <el-card
-        class="strategy-params-card"
+        :class="['strategy-params-card', { 'collapsed-card': paramsCollapsed }]"
         :loading="loading"
         style="margin-top: 20px">
         <template #header>
           <div class="card-header">
             <span>参数列表</span>
-            <el-button
-              v-if="canEdit"
-              type="primary"
-              @click="showAddParamDialog">
-              <el-icon><Plus /></el-icon>
-              添加参数
-            </el-button>
+            <div>
+              <el-button
+                type="text"
+                @click="toggleSection('params')"
+                class="collapse-btn">
+                <el-icon>
+                  <arrow-right v-if="paramsCollapsed" />
+                  <arrow-down v-else />
+                </el-icon>
+              </el-button>
+              <el-button
+                v-if="canEdit && !paramsCollapsed"
+                type="primary"
+                @click="showAddParamDialog">
+                <el-icon><Plus /></el-icon>
+                添加参数
+              </el-button>
+            </div>
           </div>
         </template>
-        <el-table :data="strategyParams" style="width: 100%" border>
-          <el-table-column prop="param_name" label="参数ID" width="150" />
-          <el-table-column prop="data_id" label="数据来源ID" width="200" />
-          <el-table-column prop="param_type" label="参数类型" width="120">
-            <template #default="scope">
-              <el-tag
-                :type="
-                  scope.row.param_type === 'table' ? 'primary' : 'success'
-                ">
-                {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="pre_period"
-            label="向前取历史天数"
-            width="150" />
-          <el-table-column
-            prop="post_period"
-            label="向后预测天数"
-            width="150" />
-          <el-table-column prop="agg_func" label="聚合函数" width="120" />
-          <el-table-column
-            label="操作"
-            width="120"
-            fixed="right"
-            v-if="canEdit">
-            <template #default="scope">
-              <el-button
-                type="danger"
-                size="small"
-                @click="removeParam(scope.row)">
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-if="strategyParams.length === 0" class="empty-params">
-          <el-empty description="暂无参数" />
-        </div>
+        <template v-if="!paramsCollapsed">
+          <el-table :data="strategyParams" style="width: 100%" border>
+            <el-table-column prop="param_name" label="参数ID" width="150" />
+            <el-table-column prop="data_id" label="数据来源ID" width="200" />
+            <el-table-column prop="param_type" label="参数类型" width="120">
+              <template #default="scope">
+                <el-tag
+                  :type="
+                    scope.row.param_type === 'table' ? 'primary' : 'success'
+                  ">
+                  {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column
+              prop="pre_period"
+              label="向前取历史天数"
+              width="150" />
+            <el-table-column
+              prop="post_period"
+              label="向后预测天数"
+              width="150" />
+            <el-table-column prop="agg_func" label="聚合函数" width="120" />
+            <el-table-column
+              label="操作"
+              width="120"
+              fixed="right"
+              v-if="canEdit">
+              <template #default="scope">
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="removeParam(scope.row)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="strategyParams.length === 0" class="empty-params">
+            <el-empty description="暂无参数" />
+          </div>
+        </template>
       </el-card>
 
       <!-- 添加参数弹窗 -->
@@ -395,7 +432,13 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Edit, DataAnalysis, Plus } from "@element-plus/icons-vue";
+import {
+  Edit,
+  DataAnalysis,
+  Plus,
+  ArrowDown,
+  ArrowRight,
+} from "@element-plus/icons-vue";
 import axios from "axios";
 import SmartAutocomplete from "@/components/SmartAutocomplete.vue";
 import CodeEditor from "@/components/CodeEditor.vue";
@@ -406,6 +449,8 @@ export default {
     Edit,
     DataAnalysis,
     Plus,
+    ArrowDown,
+    ArrowRight,
     SmartAutocomplete,
     CodeEditor,
   },
@@ -1090,6 +1135,25 @@ export default {
       risk_control_func: "",
     });
 
+    // 折叠状态 - 默认折叠
+    const selectCollapsed = ref(true);
+    const riskCollapsed = ref(true);
+    const paramsCollapsed = ref(true);
+
+    const toggleSection = (name) => {
+      switch (name) {
+        case "select":
+          selectCollapsed.value = !selectCollapsed.value;
+          break;
+        case "risk":
+          riskCollapsed.value = !riskCollapsed.value;
+          break;
+        case "params":
+          paramsCollapsed.value = !paramsCollapsed.value;
+          break;
+      }
+    };
+
     // 回测表单
     const backtestFormRef = ref(null);
     const backtestForm = reactive({
@@ -1197,6 +1261,12 @@ export default {
       handleEditBasicInfoDialogClose,
       handleEditCodeDialogClose,
       handleBacktestDialogClose,
+      selectCollapsed,
+      riskCollapsed,
+      paramsCollapsed,
+      toggleSection,
+      ArrowDown,
+      ArrowRight,
     };
   },
 };
@@ -1253,6 +1323,25 @@ export default {
   align-items: center;
 }
 
+.collapse-btn {
+  margin-left: 8px;
+  color: rgba(0, 0, 0, 0.55);
+  padding: 6px 8px;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 当卡片折叠时彻底隐藏 body，防止留下空白条 */
+.collapsed-card :deep(.el-card__body) {
+  display: none !important;
+  padding: 0 !important;
+  height: 0 !important;
+}
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1314,3 +1403,5 @@ export default {
   overflow: hidden;
 }
 </style>
+
+<style></style>
