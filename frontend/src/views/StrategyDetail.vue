@@ -1462,33 +1462,13 @@ export default {
   text-align: center;
 }
 
-.code-editor-wrapper {
-  border: 1px solid #e8e8e8;
-  border-radius: 4px;
-  overflow: hidden;
-  min-height: 100px;
-}
-
 /* 在编辑代码的弹窗中使用固定高度并内部滚动，避免弹窗本身增长 */
 .dialog-code-area {
   height: 58vh;
-  max-height: 72vh;
   overflow: hidden; /* 由内部编辑器显示滚动条 */
   box-sizing: border-box;
 }
 
-/* 允许 wrapper 显示内部滚动条（覆盖全局 overflow:hidden） */
-.dialog-code-area .code-editor-wrapper {
-  height: 100%;
-  box-sizing: border-box;
-  overflow: auto;
-}
-
-.dialog-code-area .code-editor-container {
-  height: 100%;
-}
-
-/* 新增：在弹窗 header 中展示 tabs，并与关闭按钮平行 */
 .dialog-header-with-tabs {
   display: flex;
   align-items: center;
@@ -1501,5 +1481,3 @@ export default {
   color: #303133;
 }
 </style>
-
-<style></style>
