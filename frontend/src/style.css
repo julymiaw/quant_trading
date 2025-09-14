@@ -88,7 +88,7 @@ button:focus-visible {
    - Per-dialog customization: set `--el-dialog-vh` on the dialog element (e.g. style="--el-dialog-vh:60vh")
 */
 :root {
-  --el-dialog-vh: 90vh;
+  --el-dialog-vh: 75vh;
 }
 
 /* Ensure overlay/wrapper are fixed to viewport so calculations use viewport height */

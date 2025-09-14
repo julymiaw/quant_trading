@@ -378,41 +378,53 @@
       <!-- 编辑代码弹窗 -->
       <el-dialog
         v-model="editCodeDialogVisible"
-        title="编辑策略代码"
         width="900px"
         append-to-body
         :before-close="handleEditCodeDialogClose">
-        <div class="code-editor-tabs">
-          <el-tabs
-            v-model="activeTab"
-            type="card"
-            @tab-change="handleTabChange">
-            <el-tab-pane label="选股函数" name="select_func">
-              <div class="code-editor-wrapper dialog-code-area">
-                <CodeEditor
-                  v-model="editCodeForm.select_func"
-                  :default-code="defaultSelectFunc"
-                  height="100%"
-                  :min-height="'120px'"
-                  :min-width="'200px'"
-                  :container-style="{ height: '100%' }"
-                  placeholder="请输入选股函数代码" />
-              </div>
-            </el-tab-pane>
-            <el-tab-pane label="风险控制函数" name="risk_control_func">
-              <div class="code-editor-wrapper dialog-code-area">
-                <CodeEditor
-                  v-model="editCodeForm.risk_control_func"
-                  :default-code="defaultRiskControlFunc"
-                  height="100%"
-                  :min-height="'120px'"
-                  :min-width="'200px'"
-                  :container-style="{ height: '100%' }"
-                  placeholder="请输入风险控制函数代码" />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
+        <template #header>
+          <div class="dialog-header-with-tabs">
+            <div class="dialog-tabs">
+              <el-tabs
+                v-model="activeTab"
+                type="card"
+                @tab-change="handleTabChange"
+                class="header-tabs">
+                <el-tab-pane label="选股函数" name="select_func"></el-tab-pane>
+                <el-tab-pane
+                  label="风险控制函数"
+                  name="risk_control_func"></el-tab-pane>
+              </el-tabs>
+            </div>
+          </div>
+        </template>
+
+        <div class="code-editor-tabs-body">
+          <div
+            v-show="activeTab === 'select_func'"
+            class="code-editor-wrapper dialog-code-area">
+            <CodeEditor
+              v-model="editCodeForm.select_func"
+              :default-code="defaultSelectFunc"
+              height="100%"
+              :min-height="'120px'"
+              :min-width="'200px'"
+              :container-style="{ height: '100%' }"
+              placeholder="请输入选股函数代码" />
+          </div>
+          <div
+            v-show="activeTab === 'risk_control_func'"
+            class="code-editor-wrapper dialog-code-area">
+            <CodeEditor
+              v-model="editCodeForm.risk_control_func"
+              :default-code="defaultRiskControlFunc"
+              height="100%"
+              :min-height="'120px'"
+              :min-width="'200px'"
+              :container-style="{ height: '100%' }"
+              placeholder="请输入风险控制函数代码" />
+          </div>
         </div>
+
         <template #footer>
           <span class="dialog-footer">
             <el-button @click="handleEditCodeDialogClose">取消</el-button>
@@ -1450,23 +1462,18 @@ export default {
   text-align: center;
 }
 
-.code-editor-tabs {
-  margin-top: 20px;
-}
-
 .code-editor-wrapper {
   border: 1px solid #e8e8e8;
   border-radius: 4px;
   overflow: hidden;
-  min-height: 120px;
+  min-height: 100px;
 }
 
 /* 在编辑代码的弹窗中使用固定高度并内部滚动，避免弹窗本身增长 */
 .dialog-code-area {
-  height: 520px; /* 固定可调整 */
+  height: 58vh;
   max-height: 72vh;
   overflow: hidden; /* 由内部编辑器显示滚动条 */
-  padding: 8px 8px 0 8px; /* 去掉底部内边距，避免空隙 */
   box-sizing: border-box;
 }
 
@@ -1479,6 +1486,19 @@ export default {
 
 .dialog-code-area .code-editor-container {
   height: 100%;
+}
+
+/* 新增：在弹窗 header 中展示 tabs，并与关闭按钮平行 */
+.dialog-header-with-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.dialog-header-with-tabs .dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 </style>
 
