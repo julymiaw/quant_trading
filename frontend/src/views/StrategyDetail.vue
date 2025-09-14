@@ -7,9 +7,9 @@
           <el-breadcrumb-item
             ><el-link @click="goBack">策略管理</el-link></el-breadcrumb-item
           >
-          <el-breadcrumb-item>{{ strategy.strategy_name }}</el-breadcrumb-item>
         </el-breadcrumb>
         <h1>{{ strategy.strategy_name }}</h1>
+        <p class="strategy-intro">{{ strategy.strategy_desc }}</p>
       </div>
       <div class="header-actions" v-if="canEdit">
         <el-button type="primary" @click="showSaveCodeDialog">
@@ -79,18 +79,65 @@
             <span>{{ (strategy.sell_fee_rate * 100).toFixed(3) }}%</span>
           </div>
         </div>
-        <div class="info-item full-width">
-          <label>策略描述：</label>
-          <div class="strategy-desc">{{ strategy.strategy_desc }}</div>
-        </div>
-        <div class="info-item">
-          <label>创建时间：</label>
-          <span>{{ strategy.create_time }}</span>
-        </div>
-        <div class="info-item">
-          <label>更新时间：</label>
-          <span>{{ strategy.update_time }}</span>
-        </div>
+        <!-- 移除在基本信息卡片中显示策略描述与日期（已在页头展示简介） -->
+      </el-card>
+
+      <!-- 参数列表（始终展示，放在基础信息后） -->
+      <el-card
+        class="strategy-params-card"
+        :loading="loading"
+        style="margin-top: 20px">
+        <template #header>
+          <div class="card-header">
+            <span>参数列表</span>
+            <div>
+              <el-button
+                v-if="canEdit"
+                type="primary"
+                @click="showAddParamDialog">
+                <el-icon><Plus /></el-icon>
+                添加参数
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <el-table :data="strategyParams" style="width: 100%" border>
+          <el-table-column prop="param_name" label="参数ID" width="150" />
+          <el-table-column prop="data_id" label="数据来源ID" width="200" />
+          <el-table-column prop="param_type" label="参数类型" width="120">
+            <template #default="scope">
+              <el-tag
+                :type="
+                  scope.row.param_type === 'table' ? 'primary' : 'success'
+                ">
+                {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="pre_period"
+            label="向前取历史天数"
+            width="150" />
+          <el-table-column
+            prop="post_period"
+            label="向后预测天数"
+            width="150" />
+          <el-table-column prop="agg_func" label="聚合函数" width="120" />
+          <el-table-column
+            label="操作"
+            width="120"
+            fixed="right"
+            v-if="canEdit">
+            <template #default="scope">
+              <el-button
+                type="danger"
+                size="small"
+                @click="removeParam(scope.row)"
+                >删除</el-button
+              >
+            </template>
+          </el-table-column>
+        </el-table>
       </el-card>
 
       <!-- 策略代码展示 -->
@@ -125,12 +172,11 @@
         </el-scrollbar>
       </el-card>
 
-      <!-- 风险控制函数代码 -->
+      <!-- 风险控制函数展示（恢复） -->
       <el-card
         :class="['strategy-code-card', { 'collapsed-card': riskCollapsed }]"
         :loading="loading"
-        style="margin-top: 20px"
-        v-if="strategy.risk_control_func">
+        style="margin-top: 20px">
         <template #header>
           <div class="card-header">
             <span>风险控制函数</span>
@@ -156,78 +202,6 @@
               readonly />
           </div>
         </el-scrollbar>
-      </el-card>
-
-      <!-- 参数列表 -->
-      <el-card
-        :class="['strategy-params-card', { 'collapsed-card': paramsCollapsed }]"
-        :loading="loading"
-        style="margin-top: 20px">
-        <template #header>
-          <div class="card-header">
-            <span>参数列表</span>
-            <div>
-              <el-button
-                type="text"
-                @click="toggleSection('params')"
-                class="collapse-btn">
-                <el-icon>
-                  <arrow-right v-if="paramsCollapsed" />
-                  <arrow-down v-else />
-                </el-icon>
-              </el-button>
-              <el-button
-                v-if="canEdit && !paramsCollapsed"
-                type="primary"
-                @click="showAddParamDialog">
-                <el-icon><Plus /></el-icon>
-                添加参数
-              </el-button>
-            </div>
-          </div>
-        </template>
-        <template v-if="!paramsCollapsed">
-          <el-table :data="strategyParams" style="width: 100%" border>
-            <el-table-column prop="param_name" label="参数ID" width="150" />
-            <el-table-column prop="data_id" label="数据来源ID" width="200" />
-            <el-table-column prop="param_type" label="参数类型" width="120">
-              <template #default="scope">
-                <el-tag
-                  :type="
-                    scope.row.param_type === 'table' ? 'primary' : 'success'
-                  ">
-                  {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column
-              prop="pre_period"
-              label="向前取历史天数"
-              width="150" />
-            <el-table-column
-              prop="post_period"
-              label="向后预测天数"
-              width="150" />
-            <el-table-column prop="agg_func" label="聚合函数" width="120" />
-            <el-table-column
-              label="操作"
-              width="120"
-              fixed="right"
-              v-if="canEdit">
-              <template #default="scope">
-                <el-button
-                  type="danger"
-                  size="small"
-                  @click="removeParam(scope.row)">
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div v-if="strategyParams.length === 0" class="empty-params">
-            <el-empty description="暂无参数" />
-          </div>
-        </template>
       </el-card>
 
       <!-- 添加参数弹窗 -->
@@ -1214,10 +1188,9 @@ export default {
       risk_control_func: "",
     });
 
-    // 折叠状态 - 默认折叠
+    // 折叠状态 - 默认折叠（参数列表已取消折叠）
     const selectCollapsed = ref(true);
     const riskCollapsed = ref(true);
-    const paramsCollapsed = ref(true);
 
     const toggleSection = (name) => {
       switch (name) {
@@ -1227,9 +1200,7 @@ export default {
         case "risk":
           riskCollapsed.value = !riskCollapsed.value;
           break;
-        case "params":
-          paramsCollapsed.value = !paramsCollapsed.value;
-          break;
+        // params 折叠逻辑已移除（参数列表始终展开）
       }
     };
 
@@ -1342,7 +1313,6 @@ export default {
       handleBacktestDialogClose,
       selectCollapsed,
       riskCollapsed,
-      paramsCollapsed,
       toggleSection,
       ArrowDown,
       ArrowRight,
