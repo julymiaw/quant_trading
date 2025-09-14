@@ -104,7 +104,12 @@
           </div>
         </template>
         <el-scrollbar height="400px" class="code-scrollbar">
-          <pre class="code-block">{{ strategy.select_func }}</pre>
+          <div class="code-editor-wrapper">
+            <CodeEditor
+              :model-value="strategy.select_func"
+              height="400px"
+              readonly />
+          </div>
         </el-scrollbar>
       </el-card>
 
@@ -120,7 +125,12 @@
           </div>
         </template>
         <el-scrollbar height="400px" class="code-scrollbar">
-          <pre class="code-block">{{ strategy.risk_control_func }}</pre>
+          <div class="code-editor-wrapper">
+            <CodeEditor
+              :model-value="strategy.risk_control_func"
+              height="400px"
+              readonly />
+          </div>
         </el-scrollbar>
       </el-card>
 
