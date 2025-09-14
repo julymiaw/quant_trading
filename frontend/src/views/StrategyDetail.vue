@@ -203,6 +203,7 @@
         v-model="addParamDialogVisible"
         title="添加参数"
         width="600px"
+        append-to-body
         :before-close="handleAddParamDialogClose">
         <el-form
           ref="paramFormRef"
@@ -288,6 +289,7 @@
         v-model="editBasicInfoDialogVisible"
         title="编辑基本信息"
         width="600px"
+        append-to-body
         :before-close="handleEditBasicInfoDialogClose">
         <el-form
           ref="editBasicInfoFormRef"
@@ -378,6 +380,7 @@
         v-model="editCodeDialogVisible"
         title="编辑策略代码"
         width="900px"
+        append-to-body
         :before-close="handleEditCodeDialogClose">
         <div class="code-editor-tabs">
           <el-tabs
@@ -417,6 +420,7 @@
         v-model="backtestDialogVisible"
         title="策略回测"
         width="800px"
+        append-to-body
         :before-close="handleBacktestDialogClose">
         <el-form
           ref="backtestFormRef"

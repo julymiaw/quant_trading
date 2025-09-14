@@ -81,3 +81,36 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* VH-driven Dialog layout: make top and bottom margins equal and
+   ensure (top + dialog-height + bottom) == 100vh.
+   - Default dialog height: 70vh (so margins default to 15vh each, matching Element Plus default)
+   - Per-dialog customization: set `--el-dialog-vh` on the dialog element (e.g. style="--el-dialog-vh:60vh")
+*/
+:root {
+  --el-dialog-vh: 90vh;
+}
+
+/* Ensure overlay/wrapper are fixed to viewport so calculations use viewport height */
+.el-overlay,
+.el-dialog__wrapper {
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+/* Apply VH-driven sizing + symmetric margins. Use the variable with fallback. */
+.el-dialog {
+  width: var(--el-dialog-width, 50%);
+  height: var(--el-dialog-vh, 70vh);
+  /* margin: <top> auto <bottom>; top == bottom == (100vh - dialog-vh) / 2 */
+  margin: calc((100vh - var(--el-dialog-vh, 70vh)) / 2) auto !important;
+  max-height: 100vh;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+/* Keep dialog content from overflowing the viewport; allow inner scrolling when needed */
+.el-dialog__body,
+.el-dialog__footer {
+  box-sizing: border-box;
+}

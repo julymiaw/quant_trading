@@ -62,6 +62,7 @@
       title="用户信息"
       v-model="userInfoDialogVisible"
       width="400px"
+      append-to-body
       :before-close="handleUserInfoDialogClose">
       <el-descriptions :column="1" border>
         <el-descriptions-item label="用户名">{{
