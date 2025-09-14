@@ -52,7 +52,8 @@
         style="width: 100%"
         border
         row-key="id"
-        height="100%">
+        height="100%"
+        :resizable="false">
         <el-table-column prop="param_name" label="参数ID" width="150" />
         <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
         <el-table-column prop="param_type" label="参数类型" width="120">
@@ -75,7 +76,7 @@
         </el-table-column>
         <el-table-column prop="creator_name" label="创建者" width="120" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -203,6 +204,16 @@ export default {
   setup() {
     const loading = ref(false);
     const params = ref([]);
+    // Sort helper: newest create_time first
+    const sortByCreateTimeDesc = (arr) => {
+      if (!arr || !Array.isArray(arr)) return arr;
+      arr.sort((a, b) => {
+        const ta = a && a.create_time ? new Date(a.create_time).getTime() : 0;
+        const tb = b && b.create_time ? new Date(b.create_time).getTime() : 0;
+        return tb - ta;
+      });
+      return arr;
+    };
     const searchKeyword = ref("");
     const paramType = ref("my");
     const paramSourceType = ref("all");
@@ -324,6 +335,7 @@ export default {
 
         if (response.data && response.data.data) {
           params.value = response.data.data.params || [];
+          sortByCreateTimeDesc(params.value);
           total.value = response.data.data.total || 0;
         } else {
           params.value = [];
@@ -506,7 +518,7 @@ export default {
 
         paramDialogVisible.value = false;
 
-        // 重新获取参数列表
+        // 重新获取参数列表，确保按创建时间排序，新添加/复制的参数会出现在正确位置
         await fetchParams();
       } catch (error) {
         console.error("保存参数失败:", error);
@@ -652,5 +664,11 @@ export default {
   justify-content: flex-end;
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* Prevent action buttons from wrapping and add spacing */
+.el-table .cell .el-button {
+  white-space: nowrap;
+  margin-right: 8px;
 }
 </style>

@@ -51,7 +51,8 @@
         :data="filteredStrategies"
         style="width: 100%"
         border
-        row-key="id">
+        row-key="id"
+        :resizable="false">
         <el-table-column prop="strategy_name" label="策略名称" min-width="180">
           <template #default="scope">
             <el-link
@@ -106,7 +107,7 @@
           min-width="200" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
         <el-table-column prop="update_time" label="更新时间" width="160" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -165,6 +166,16 @@ export default {
     const router = useRouter();
     const loading = ref(false);
     const strategies = ref([]);
+    // Sort helper: newest create_time first
+    const sortByCreateTimeDesc = (arr) => {
+      if (!arr || !Array.isArray(arr)) return arr;
+      arr.sort((a, b) => {
+        const ta = a && a.create_time ? new Date(a.create_time).getTime() : 0;
+        const tb = b && b.create_time ? new Date(b.create_time).getTime() : 0;
+        return tb - ta;
+      });
+      return arr;
+    };
     const searchKeyword = ref("");
     const scopeType = ref("all");
     const strategyType = ref("my");
@@ -233,6 +244,7 @@ export default {
 
         if (response.data.code === 200) {
           strategies.value = response.data.data.strategies || [];
+          sortByCreateTimeDesc(strategies.value);
           total.value = response.data.data.total || 0;
         } else {
           throw new Error(response.data.message || "获取策略列表失败");
@@ -369,6 +381,9 @@ export default {
 
         if (response.data.code === 200) {
           ElMessage.success("新策略创建成功，正在跳转到编辑页面...");
+
+          // 重新刷新策略列表，确保新创建的策略按创建时间排序
+          await fetchStrategies();
 
           // 跳转到新创建的策略详情页面
           router.push({
@@ -559,6 +574,9 @@ export default {
         if (response.data.code === 200) {
           ElMessage.success("策略复制成功，正在跳转到编辑页面...");
 
+          // 重新刷新策略列表，确保复制的策略按创建时间排序
+          await fetchStrategies();
+
           // 跳转到新复制的策略详情页面
           router.push({
             name: "StrategyDetail",
@@ -692,5 +710,11 @@ export default {
   justify-content: flex-end;
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* Prevent action buttons from wrapping and add spacing */
+.el-table .cell .el-button {
+  white-space: nowrap;
+  margin-right: 8px;
 }
 </style>

@@ -52,7 +52,8 @@
         style="width: 100%"
         border
         row-key="id"
-        height="100%">
+        height="100%"
+        :resizable="false">
         <el-table-column prop="indicator_name" label="指标名称" min-width="180">
           <template #default="scope">
             <el-link
@@ -78,7 +79,7 @@
           show-overflow-tooltip
           min-width="200" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -121,7 +122,7 @@
     <el-dialog
       v-model="indicatorDialogVisible"
       :title="isEditMode ? '编辑指标' : '添加指标'"
-      width="700px"
+      width="800px"
       :before-close="handleIndicatorDialogClose">
       <el-form
         ref="indicatorFormRef"
@@ -131,14 +132,14 @@
         <el-form-item label="指标名称" prop="indicator_name">
           <el-input
             v-model="indicatorForm.indicator_name"
-            placeholder="请输入指标名称" />
+            placeholder="请输入指标名称"
+            class="input-wide" />
         </el-form-item>
         <el-form-item label="计算函数" prop="calculation_method">
           <div class="code-editor-wrapper">
             <CodeEditor
               v-model="indicatorForm.calculation_method"
               :default-code="defaultIndicatorFunc"
-              height="300px"
               placeholder="请输入指标计算函数" />
           </div>
         </el-form-item>
@@ -146,7 +147,8 @@
           <el-input
             v-model="indicatorForm.description"
             type="textarea"
-            placeholder="请输入指标说明" />
+            placeholder="请输入指标说明"
+            class="textarea-wide" />
         </el-form-item>
         <el-form-item label="是否启用" prop="is_active">
           <el-switch v-model="indicatorForm.is_active" />
@@ -322,6 +324,16 @@ export default {
     const router = useRouter();
     const loading = ref(false);
     const indicators = ref([]);
+    // Sort helper: newest create_time first
+    const sortByCreateTimeDesc = (arr) => {
+      if (!arr || !Array.isArray(arr)) return arr;
+      arr.sort((a, b) => {
+        const ta = a && a.create_time ? new Date(a.create_time).getTime() : 0;
+        const tb = b && b.create_time ? new Date(b.create_time).getTime() : 0;
+        return tb - ta;
+      });
+      return arr;
+    };
     const searchKeyword = ref("");
     const isActive = ref("all");
     const indicatorType = ref("my");
@@ -511,6 +523,7 @@ export default {
 
           // 后端返回的字段已经是正确的格式，不需要转换
           indicators.value = indicatorList;
+          sortByCreateTimeDesc(indicators.value);
           total.value = response.data.pagination
             ? response.data.pagination.total
             : indicatorList.length;
@@ -1140,9 +1153,29 @@ export default {
   text-align: center;
 }
 
+.code-editor-container {
+  height: 30vh;
+  width: 60vh;
+}
+
 .code-editor-wrapper {
   border: 1px solid #e8e8e8;
   border-radius: 4px;
   overflow: hidden;
+}
+
+/* Prevent action buttons from wrapping and add spacing */
+.el-table .cell .el-button {
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+/* Wider input/textarea for indicator form */
+.input-wide {
+  max-width: 560px; /* default wider width */
+}
+
+.textarea-wide {
+  max-width: 560px;
 }
 </style>
