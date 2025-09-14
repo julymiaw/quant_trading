@@ -314,6 +314,62 @@
           <el-form-item label="是否公开" prop="public">
             <el-switch v-model="editBasicInfoForm.public" />
           </el-form-item>
+
+          <el-form-item label="生效范围" prop="scope_type">
+            <el-select
+              v-model="editBasicInfoForm.scope_type"
+              placeholder="请选择生效范围">
+              <el-option label="全部" value="all" />
+              <el-option label="单只股票" value="single_stock" />
+              <el-option label="指数成分股" value="index" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item
+            label="股票/指数ID"
+            prop="scope_id"
+            v-if="editBasicInfoForm.scope_type !== 'all'">
+            <el-input
+              v-model="editBasicInfoForm.scope_id"
+              placeholder="请输入股票或指数ID，如 000001.XSHE" />
+          </el-form-item>
+
+          <el-form-item
+            label="持仓数量"
+            prop="position_count"
+            v-if="editBasicInfoForm.scope_type !== 'single_stock'">
+            <el-input-number
+              v-model="editBasicInfoForm.position_count"
+              :min="0"
+              :max="1000" />
+          </el-form-item>
+
+          <el-form-item
+            label="调仓间隔(天)"
+            prop="rebalance_interval"
+            v-if="editBasicInfoForm.scope_type !== 'single_stock'">
+            <el-input-number
+              v-model="editBasicInfoForm.rebalance_interval"
+              :min="1"
+              :max="365" />
+          </el-form-item>
+
+          <el-form-item label="买入手续费率(%)" prop="buy_fee_rate">
+            <el-input-number
+              v-model="editBasicInfoForm.buy_fee_rate"
+              :min="0"
+              :max="100"
+              :step="0.001" />
+          </el-form-item>
+
+          <el-form-item label="卖出手续费率(%)" prop="sell_fee_rate">
+            <el-input-number
+              v-model="editBasicInfoForm.sell_fee_rate"
+              :min="0"
+              :max="100"
+              :step="0.001" />
+          </el-form-item>
+
           <el-form-item label="策略描述" prop="strategy_desc">
             <el-input
               v-model="editBasicInfoForm.strategy_desc"
@@ -667,11 +723,17 @@ export default {
 
     // 编辑基本信息
     const editBasicInfo = () => {
-      // 填充编辑表单
+      // 填充编辑表单（显示友好值）
       Object.assign(editBasicInfoForm, {
         strategy_name: strategy.strategy_name,
         public: strategy.public,
         strategy_desc: strategy.strategy_desc,
+        scope_type: strategy.scope_type || "all",
+        scope_id: strategy.scope_id || "",
+        position_count: strategy.position_count || 0,
+        rebalance_interval: strategy.rebalance_interval || 1,
+        buy_fee_rate: (strategy.buy_fee_rate || 0) * 100,
+        sell_fee_rate: (strategy.sell_fee_rate || 0) * 100,
       });
 
       editBasicInfoDialogVisible.value = true;
@@ -692,18 +754,18 @@ export default {
           return;
         }
 
-        // 准备更新数据 - 包含完整的策略信息
+        // 准备更新数据 - 将 UI 的百分比费率转换为小数
         const updateData = {
           strategy_name: editBasicInfoForm.strategy_name,
           public: editBasicInfoForm.public,
-          scope_type: strategy.scope_type,
-          scope_id: strategy.scope_id,
+          scope_type: editBasicInfoForm.scope_type,
+          scope_id: editBasicInfoForm.scope_id,
           select_func: strategy.select_func,
           risk_control_func: strategy.risk_control_func,
-          position_count: strategy.position_count,
-          rebalance_interval: strategy.rebalance_interval,
-          buy_fee_rate: strategy.buy_fee_rate,
-          sell_fee_rate: strategy.sell_fee_rate,
+          position_count: editBasicInfoForm.position_count,
+          rebalance_interval: editBasicInfoForm.rebalance_interval,
+          buy_fee_rate: Number(editBasicInfoForm.buy_fee_rate) / 100,
+          sell_fee_rate: Number(editBasicInfoForm.sell_fee_rate) / 100,
           strategy_desc: editBasicInfoForm.strategy_desc,
         };
 
@@ -720,8 +782,18 @@ export default {
         );
 
         if (response.data.code === 200) {
-          // 更新本地策略数据
-          Object.assign(strategy, editBasicInfoForm);
+          // 更新本地策略数据（保持内部存储为小数形式）
+          Object.assign(strategy, {
+            strategy_name: editBasicInfoForm.strategy_name,
+            public: editBasicInfoForm.public,
+            scope_type: editBasicInfoForm.scope_type,
+            scope_id: editBasicInfoForm.scope_id,
+            position_count: editBasicInfoForm.position_count,
+            rebalance_interval: editBasicInfoForm.rebalance_interval,
+            buy_fee_rate: Number(editBasicInfoForm.buy_fee_rate) / 100,
+            sell_fee_rate: Number(editBasicInfoForm.sell_fee_rate) / 100,
+            strategy_desc: editBasicInfoForm.strategy_desc,
+          });
           ElMessage.success("基本信息更新成功");
           editBasicInfoDialogVisible.value = false;
         } else {
@@ -1114,6 +1186,13 @@ export default {
       strategy_name: "",
       public: true,
       strategy_desc: "",
+      scope_type: "all",
+      scope_id: "",
+      position_count: 0,
+      rebalance_interval: 1,
+      // displayed as percent in UI (e.g. 0.1 -> 10)
+      buy_fee_rate: 0.1,
+      sell_fee_rate: 0.1,
     });
 
     const editBasicInfoRules = {
