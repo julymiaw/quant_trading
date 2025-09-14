@@ -171,14 +171,10 @@
       <div class="indicator-params-content">
         <div class="params-list">
           <h3>已添加参数</h3>
-          <el-table
-            :data="currentIndicatorParams"
-            style="width: 100%"
-            border
-            v-if="currentIndicatorParams.length > 0">
+          <el-table :data="currentIndicatorParams" style="width: 100%" border>
             <el-table-column prop="param_name" label="参数ID" width="150" />
-            <el-table-column prop="data_id" label="数据来源ID" width="200" />
-            <el-table-column prop="param_type" label="参数类型" width="120">
+            <el-table-column prop="data_id" label="数据来源ID" width="150" />
+            <el-table-column prop="param_type" label="参数类型" width="95">
               <template #default="scope">
                 <el-tag
                   :type="
@@ -188,15 +184,9 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column
-              prop="pre_period"
-              label="向前取历史天数"
-              width="150" />
-            <el-table-column
-              prop="post_period"
-              label="向后预测天数"
-              width="150" />
-            <el-table-column prop="agg_func" label="聚合函数" width="120" />
+            <el-table-column prop="pre_period" label="历史天数" width="100" />
+            <el-table-column prop="post_period" label="预测天数" width="100" />
+            <el-table-column prop="agg_func" label="聚合函数" width="95" />
             <el-table-column label="操作" width="80" fixed="right">
               <template #default="scope">
                 <el-button
@@ -208,9 +198,6 @@
               </template>
             </el-table-column>
           </el-table>
-          <div v-else class="empty-params">
-            <el-empty description="暂无参数" />
-          </div>
         </div>
 
         <div class="add-param-section">
@@ -221,75 +208,101 @@
             :rules="addParamRules"
             label-width="120px"
             size="small">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="参数ID" prop="param_name">
-                  <el-input
-                    v-model="addParamForm.param_name"
-                    placeholder="请输入参数ID" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="参数类型" prop="param_type">
-                  <el-select
-                    v-model="addParamForm.param_type"
-                    placeholder="请选择参数类型">
-                    <el-option label="数据表" value="table" />
-                    <el-option label="指标" value="indicator" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="数据来源ID" prop="data_id">
-                  <SmartAutocomplete
-                    v-model="addParamForm.data_id"
-                    node-type="数据表"
-                    placeholder="请输入数据来源ID，如：daily.open"
-                    @select="handleDataSourceSelect" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="聚合函数" prop="agg_func">
-                  <el-select
-                    v-model="addParamForm.agg_func"
-                    placeholder="请选择聚合函数"
-                    clearable>
-                    <el-option label="SMA" value="SMA" />
-                    <el-option label="EMA" value="EMA" />
-                    <el-option label="MAX" value="MAX" />
-                    <el-option label="MIN" value="MIN" />
-                    <el-option label="SUM" value="SUM" />
-                    <el-option label="AVG" value="AVG" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="向前取历史天数" prop="pre_period">
-                  <el-input-number
-                    v-model="addParamForm.pre_period"
-                    :min="0"
-                    :max="365" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="向后预测天数" prop="post_period">
-                  <el-input-number
-                    v-model="addParamForm.post_period"
-                    :min="0"
-                    :max="365" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-button
-              type="primary"
-              @click="addIndicatorParam"
-              style="margin-top: 10px">
-              添加参数
-            </el-button>
+            <el-form-item label="添加模式">
+              <el-radio-group v-model="addParamMode">
+                <el-radio label="existing">使用已有参数</el-radio>
+                <el-radio label="new">新增参数</el-radio>
+              </el-radio-group>
+            </el-form-item>
+
+            <!-- 使用已有参数 -->
+            <template v-if="addParamMode === 'existing'">
+              <el-form-item label="选择参数" prop="existing_param">
+                <SmartAutocomplete
+                  v-model="existingParamSelected"
+                  node-type="参数"
+                  placeholder="请选择已有参数，格式：creator.param_name" />
+              </el-form-item>
+              <el-button
+                type="primary"
+                @click="addIndicatorParam"
+                style="margin-top: 10px">
+                添加参数
+              </el-button>
+            </template>
+
+            <!-- 新增参数 -->
+            <template v-else>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="参数ID" prop="param_name">
+                    <el-input
+                      v-model="addParamForm.param_name"
+                      placeholder="请输入参数ID" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="参数类型" prop="param_type">
+                    <el-select
+                      v-model="addParamForm.param_type"
+                      placeholder="请选择参数类型">
+                      <el-option label="数据表" value="table" />
+                      <el-option label="指标" value="indicator" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="数据来源ID" prop="data_id">
+                    <SmartAutocomplete
+                      v-model="addParamForm.data_id"
+                      node-type="数据表"
+                      placeholder="请输入数据来源ID，如：daily.open"
+                      @select="handleDataSourceSelect" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="聚合函数" prop="agg_func">
+                    <el-select
+                      v-model="addParamForm.agg_func"
+                      placeholder="请选择聚合函数"
+                      clearable>
+                      <el-option label="SMA" value="SMA" />
+                      <el-option label="EMA" value="EMA" />
+                      <el-option label="MAX" value="MAX" />
+                      <el-option label="MIN" value="MIN" />
+                      <el-option label="SUM" value="SUM" />
+                      <el-option label="AVG" value="AVG" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="向前取历史天数" prop="pre_period">
+                    <el-input-number
+                      v-model="addParamForm.pre_period"
+                      :min="0"
+                      :max="365" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="向后预测天数" prop="post_period">
+                    <el-input-number
+                      v-model="addParamForm.post_period"
+                      :min="0"
+                      :max="365" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-button
+                type="primary"
+                @click="addIndicatorParam"
+                style="margin-top: 10px">
+                添加参数
+              </el-button>
+            </template>
           </el-form>
         </div>
       </div>
@@ -378,6 +391,10 @@ export default {
     const currentIndicator = ref(null);
     const currentIndicatorParams = ref([]);
     const addParamFormRef = ref(null);
+
+    // 添加参数模式（existing/new）和选择
+    const addParamMode = ref("existing");
+    const existingParamSelected = ref("");
 
     // 指标表单数据
     const indicatorForm = reactive({
@@ -822,70 +839,46 @@ export default {
       indicatorParamsDialogVisible.value = true;
     };
 
-    // 获取指标参数
+    // 获取指标参数（从后端拉取关系并映射为表格需要的字段）
     const fetchIndicatorParams = async (indicator) => {
       try {
-        // 这里使用模拟数据，实际开发中应替换为真实的API调用
-        // const response = await axios.get(`/api/indicators/${indicator.creator_name}/${indicator.indicator_name}/params`)
-
-        // 模拟指标参数数据
-        let mockParams = [];
-
-        if (indicator.indicator_name === "MACD") {
-          mockParams = [
-            {
-              param_name: "close_price",
-              data_id: "daily.close",
-              param_type: "table",
-              pre_period: 26, // MACD通常使用26天的数据
-              post_period: 0,
-              agg_func: null,
-            },
-          ];
-        } else if (indicator.indicator_name === "RSI") {
-          mockParams = [
-            {
-              param_name: "close_price",
-              data_id: "daily.close",
-              param_type: "table",
-              pre_period: 14, // RSI通常使用14天的数据
-              post_period: 0,
-              agg_func: null,
-            },
-          ];
-        } else if (indicator.indicator_name === "KDJ") {
-          mockParams = [
-            {
-              param_name: "high_price",
-              data_id: "daily.high",
-              param_type: "table",
-              pre_period: 9, // KDJ通常使用9天的数据
-              post_period: 0,
-              agg_func: null,
-            },
-            {
-              param_name: "low_price",
-              data_id: "daily.low",
-              param_type: "table",
-              pre_period: 9,
-              post_period: 0,
-              agg_func: null,
-            },
-            {
-              param_name: "close_price",
-              data_id: "daily.close",
-              param_type: "table",
-              pre_period: 9,
-              post_period: 0,
-              agg_func: null,
-            },
-          ];
+        const token = localStorage.getItem("token");
+        if (!token) {
+          currentIndicatorParams.value = [];
+          return;
         }
 
-        currentIndicatorParams.value = mockParams;
+        const response = await axios.get(`/api/indicator-param-relations`, {
+          params: {
+            indicator_creator: indicator.creator_name,
+            indicator_name: indicator.indicator_name,
+            limit: 1000,
+            page: 1,
+          },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const relations = response.data?.data || [];
+
+        // 将后端返回的关系行映射为当前表格期望的字段
+        const mapped = relations.map((r) => {
+          return {
+            param_name: r.param_name,
+            data_id: r.data_id || r.data_id || r.param_data_type || "",
+            param_type: r.param_type || r.param_type || "table",
+            pre_period: r.pre_period !== undefined ? r.pre_period : 0,
+            post_period: r.post_period !== undefined ? r.post_period : 0,
+            agg_func:
+              r.agg_func !== undefined ? r.agg_func : r.default_value || null,
+            creator_name: r.param_creator_name,
+          };
+        });
+
+        currentIndicatorParams.value = mapped;
       } catch (error) {
         console.error("获取指标参数失败:", error);
         ElMessage.error("获取指标参数失败，请重试");
+        currentIndicatorParams.value = [];
       }
     };
 
@@ -895,57 +888,124 @@ export default {
       console.log("选择了数据源:", value);
     };
 
-    // 添加指标参数
+    // 添加指标参数（支持 existing/new 两种模式，与 StrategyDetail 行为一致）
     const addIndicatorParam = async () => {
       try {
-        // 表单验证
-        await addParamFormRef.value.validate();
-
         loading.value = true;
 
-        // 检查参数ID是否已存在
-        const exists = currentIndicatorParams.value.some(
-          (p) => p.param_name === addParamForm.param_name
-        );
-        if (exists) {
-          ElMessage.error("参数ID已存在，请使用其他ID");
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
           loading.value = false;
           return;
         }
 
-        // 这里使用模拟保存，实际开发中应替换为真实的API调用
-        // await axios.post(
-        //   `/api/indicators/${currentIndicator.value.creator_name}/${currentIndicator.value.indicator_name}/params`,
-        //   addParamForm
-        // )
+        const userInfo = JSON.parse(localStorage.getItem("userInfo") || "null");
+        const currentUserName = userInfo?.user_name;
 
-        // 添加参数到列表
-        currentIndicatorParams.value.push({ ...addParamForm });
+        if (addParamMode.value === "existing") {
+          if (!existingParamSelected.value) {
+            ElMessage.error("请选择已有参数");
+            loading.value = false;
+            return;
+          }
 
-        // 重置表单
-        Object.assign(addParamForm, {
-          param_name: "",
-          data_id: "",
-          param_type: "table",
-          pre_period: 0,
-          post_period: 0,
-          agg_func: null,
-        });
+          const parts = existingParamSelected.value.split(".");
+          if (parts.length !== 2) {
+            ElMessage.error("请选择格式为 creator.param_name 的参数");
+            loading.value = false;
+            return;
+          }
 
-        ElMessage.success("参数添加成功");
+          const [param_creator_name, param_name] = parts;
+
+          // 关联已有参数到当前指标
+          // 使用后端的指标参数关系创建接口
+          await axios.post(
+            `/api/indicator-param-relations`,
+            {
+              indicator_creator_name: currentIndicator.value.creator_name,
+              indicator_name: currentIndicator.value.indicator_name,
+              param_creator_name,
+              param_name,
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          ElMessage.success("参数已添加到当前指标");
+          // 刷新参数列表，但不关闭弹窗（与策略页面行为一致）
+          await fetchIndicatorParams(currentIndicator.value);
+        } else {
+          // 新建参数并关联
+          await addParamFormRef.value.validate();
+
+          const paramData = {
+            param_name: addParamForm.param_name,
+            data_id: addParamForm.data_id,
+            param_type: addParamForm.param_type,
+            pre_period: Number(addParamForm.pre_period) || 0,
+            post_period: Number(addParamForm.post_period) || 0,
+            agg_func: addParamForm.agg_func || null,
+          };
+
+          try {
+            await axios.post("/api/params", paramData, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            });
+          } catch (err) {
+            // 如果参数已存在，后端可能返回400，这里忽略并继续关联
+            if (!err.response || err.response.status !== 400) throw err;
+          }
+
+          // 关联新创建的参数到指标（使用后端的指标参数关系创建接口）
+          await axios.post(
+            `/api/indicator-param-relations`,
+            {
+              indicator_creator_name: currentIndicator.value.creator_name,
+              indicator_name: currentIndicator.value.indicator_name,
+              param_creator_name: currentUserName,
+              param_name: addParamForm.param_name,
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          ElMessage.success("新参数已创建并添加到当前指标");
+          // 保持弹窗打开，重置新增表单并刷新参数列表
+          if (addParamFormRef.value) {
+            addParamFormRef.value.resetFields();
+            addParamForm.param_type = "table";
+            addParamForm.agg_func = null;
+          }
+          await fetchIndicatorParams(currentIndicator.value);
+        }
       } catch (error) {
         console.error("添加参数失败:", error);
-        ElMessage.error("添加参数失败，请重试");
+        ElMessage.error(
+          error.response?.data?.message || "添加参数失败，请重试"
+        );
       } finally {
         loading.value = false;
       }
     };
 
-    // 删除指标参数
+    // 从当前指标中移除参数关系（保留参数实体）
     const removeIndicatorParam = (param) => {
       ElMessageBox.confirm(
-        `确定要删除参数"${param.param_name}"吗？`,
-        "确认删除",
+        `确定要将参数"${param.param_name}"从当前指标中移除吗？此操作不会删除参数实体，只会解除本指标的关联。`,
+        "确认移除",
         {
           confirmButtonText: "确定",
           cancelButtonText: "取消",
@@ -956,26 +1016,39 @@ export default {
           try {
             loading.value = true;
 
-            // 这里使用模拟删除，实际开发中应替换为真实的API调用
-            // await axios.delete(
-            //   `/api/indicators/${currentIndicator.value.creator_name}/${currentIndicator.value.indicator_name}/params/${param.param_name}`
-            // )
+            const token = localStorage.getItem("token");
+            if (!token) {
+              ElMessage.error("请先登录");
+              loading.value = false;
+              return;
+            }
 
-            // 从列表中删除参数
-            currentIndicatorParams.value = currentIndicatorParams.value.filter(
-              (p) => p.param_name !== param.param_name
-            );
+            // 构造 relation_id: indicator_creator.indicator_name.param_creator.param_name
+            const relationId = `${currentIndicator.value.creator_name}.${
+              currentIndicator.value.indicator_name
+            }.${param.param_creator_name || param.creator_name}.${
+              param.param_name
+            }`;
 
-            ElMessage.success("参数删除成功");
+            await axios.delete(`/api/indicator-param-relations/${relationId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            // 刷新参数列表
+            await fetchIndicatorParams(currentIndicator.value);
+
+            ElMessage.success("参数已从当前指标移除");
           } catch (error) {
-            console.error("删除参数失败:", error);
-            ElMessage.error("删除参数失败，请重试");
+            console.error("移除参数失败:", error);
+            ElMessage.error(
+              error.response?.data?.message || "移除参数失败，请重试"
+            );
           } finally {
             loading.value = false;
           }
         })
         .catch(() => {
-          // 用户取消删除
+          // 用户取消移除
         });
     };
 
@@ -1069,6 +1142,8 @@ export default {
       handleDataSourceSelect,
       addIndicatorParam,
       removeIndicatorParam,
+      addParamMode,
+      existingParamSelected,
       handleIndicatorDialogClose,
       handleIndicatorParamsDialogClose,
       handleSizeChange,

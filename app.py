@@ -2375,15 +2375,13 @@ def get_indicator_param_relations(current_user):
                 sql = f"""
                 SELECT 
                     ipr.*,
-                    i.indicator_desc,
-                    i.indicator_category,
-                    i.is_enabled as indicator_enabled,
-                    p.param_desc,
+                    i.description AS indicator_description,
+                    i.is_active AS indicator_active,
+                    p.data_id,
                     p.param_type,
-                    p.data_type as param_data_type,
-                    p.default_value,
-                    p.is_required,
-                    p.is_enabled as param_enabled
+                    p.pre_period,
+                    p.post_period,
+                    p.agg_func
                 FROM IndicatorParamRel ipr
                 LEFT JOIN Indicator i ON ipr.indicator_creator_name = i.creator_name 
                     AND ipr.indicator_name = i.indicator_name
