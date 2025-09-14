@@ -993,7 +993,7 @@ def get_table_fields(table_name: str) -> list:
         cursor.close()
         return fields
     except Exception as e:
-        logger.error(f"获取表字段失败: {e}")
+        logger.exception("获取表字段失败")
         return []
     finally:
         connection.close()
@@ -1015,11 +1015,11 @@ def search_users(query: str = "") -> list:
         else:
             cursor.execute("SELECT DISTINCT user_name FROM User ORDER BY user_name")
 
-        users = [row[0] for row in cursor.fetchall()]
+        users = [row["user_name"] for row in cursor.fetchall()]
         cursor.close()
         return users
     except Exception as e:
-        logger.error(f"搜索用户失败: {e}")
+        logger.exception("搜索用户失败")
         return []
 
 
@@ -1042,11 +1042,11 @@ def search_strategies(creator_name: str, query: str = "") -> list:
                 (creator_name,),
             )
 
-        strategies = [row[0] for row in cursor.fetchall()]
+        strategies = [row["strategy_name"] for row in cursor.fetchall()]
         cursor.close()
         return strategies
     except Exception as e:
-        logger.error(f"搜索策略失败: {e}")
+        logger.exception("搜索策略失败")
         return []
 
 
@@ -1069,11 +1069,11 @@ def search_params(creator_name: str, query: str = "") -> list:
                 (creator_name,),
             )
 
-        params = [row[0] for row in cursor.fetchall()]
+        params = [row["param_name"] for row in cursor.fetchall()]
         cursor.close()
         return params
     except Exception as e:
-        logger.error(f"搜索参数失败: {e}")
+        logger.exception("搜索参数失败")
         return []
 
 
@@ -1096,11 +1096,11 @@ def search_indicators(creator_name: str, query: str = "") -> list:
                 (creator_name,),
             )
 
-        indicators = [row[0] for row in cursor.fetchall()]
+        indicators = [row["indicator_name"] for row in cursor.fetchall()]
         cursor.close()
         return indicators
     except Exception as e:
-        logger.error(f"搜索指标失败: {e}")
+        logger.exception("搜索指标失败")
         return []
 
 

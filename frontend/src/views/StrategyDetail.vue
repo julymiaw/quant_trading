@@ -222,8 +222,7 @@
               <SmartAutocomplete
                 v-model="existingParamSelected"
                 node-type="参数"
-                placeholder="请选择已有参数，格式：creator.param_name"
-                @select="(v) => (existingParamSelected = v)" />
+                placeholder="请选择已有参数，格式：creator.param_name" />
             </el-form-item>
           </template>
 
@@ -1341,6 +1340,7 @@ export default {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 20px;
+  margin-right: 20px;
 }
 
 .header-left {
