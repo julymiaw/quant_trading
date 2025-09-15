@@ -128,7 +128,9 @@
           <!-- 这里将显示回测图表 -->
           <div class="chart-container">
             <h4>回测净值曲线</h4>
-            <div id="equityChart" class="chart"></div>
+            <div class="chart">
+              <img src="/report.png" alt="回测净值曲线" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
           </div>
           <div class="chart-container">
             <h4>回测结果统计</h4>
@@ -518,14 +520,12 @@ export default {
 }
 
 .chart {
-  height: 300px;
-  background-color: #fafafa;
-  border-radius: 6px;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
-  font-size: 14px;
+  overflow: hidden;
 }
 
 .stats-grid {
