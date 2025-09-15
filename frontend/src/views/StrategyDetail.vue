@@ -319,9 +319,21 @@
             label="股票/指数ID"
             prop="scope_id"
             v-if="editBasicInfoForm.scope_type !== 'all'">
-            <el-input
+            <SmartAutocomplete
               v-model="editBasicInfoForm.scope_id"
-              placeholder="请输入股票或指数ID，如 000001.XSHE" />
+              :node-type="
+                editBasicInfoForm.scope_type === 'single_stock'
+                  ? '股票'
+                  : '指数'
+              "
+              placeholder="请输入股票或指数ID，如 000001.SZ 或 000300.SH" />
+          </el-form-item>
+
+          <el-form-item label="基准指数(可选)" prop="benchmark_index">
+            <SmartAutocomplete
+              v-model="editBasicInfoForm.benchmark_index"
+              node-type="基准"
+              placeholder="可选：输入基准指数代码，例如 000300.SH" />
           </el-form-item>
 
           <el-form-item
@@ -740,6 +752,7 @@ export default {
         strategy_desc: strategy.strategy_desc,
         scope_type: strategy.scope_type || "all",
         scope_id: strategy.scope_id || "",
+        benchmark_index: strategy.benchmark_index || "",
         position_count: strategy.position_count || 0,
         rebalance_interval: strategy.rebalance_interval || 1,
         buy_fee_rate: (strategy.buy_fee_rate || 0) * 100,
@@ -770,6 +783,7 @@ export default {
           public: editBasicInfoForm.public,
           scope_type: editBasicInfoForm.scope_type,
           scope_id: editBasicInfoForm.scope_id,
+          benchmark_index: editBasicInfoForm.benchmark_index || null,
           select_func: strategy.select_func,
           risk_control_func: strategy.risk_control_func,
           position_count: editBasicInfoForm.position_count,
@@ -848,6 +862,7 @@ export default {
           public: strategy.public,
           scope_type: strategy.scope_type,
           scope_id: strategy.scope_id,
+          benchmark_index: strategy.benchmark_index || null,
           select_func: editCodeForm.select_func,
           risk_control_func: editCodeForm.risk_control_func,
           position_count: strategy.position_count,
@@ -1177,6 +1192,7 @@ export default {
       strategy_desc: "",
       scope_type: "all",
       scope_id: "",
+      benchmark_index: "",
       position_count: 0,
       rebalance_interval: 1,
       // displayed as percent in UI (e.g. 0.1 -> 10)
