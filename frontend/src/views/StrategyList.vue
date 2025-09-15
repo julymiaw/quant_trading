@@ -478,91 +478,16 @@ export default {
           return;
         }
 
-        // 创建复制的策略，使用原策略的数据
-        const copiedStrategyData = {
+        // 使用新的复制API
+        const strategyId = `${strategy.creator_name}/${strategy.strategy_name}`;
+        const copyData = {
           strategy_name: `复制_${strategy.strategy_name}_${Date.now()}`, // 使用时间戳确保唯一性
-          public: false, // 复制的策略默认不公开
-          scope_type: strategy.scope_type,
-          scope_id: strategy.scope_id || "",
-          position_count: strategy.position_count || 5,
-          rebalance_interval: strategy.rebalance_interval || 5,
-          buy_fee_rate: strategy.buy_fee_rate || 0.001,
-          sell_fee_rate: strategy.sell_fee_rate || 0.001,
-          strategy_desc: `复制自 ${strategy.strategy_name} - ${
-            strategy.strategy_desc || ""
-          }`,
-          select_func:
-            strategy.select_func ||
-            `def select_func(candidates, params, position_count, current_holdings, date, context=None):
-    """
-    选股函数 - 根据策略逻辑选择要持有的股票
-
-    参数说明:
-    - candidates: 可选股票列表
-    - params: 参数字典，包含各种技术指标和数据
-    - position_count: 最大持仓股票数量
-    - current_holdings: 当前持仓股票列表
-    - date: 当前日期
-    - context: 上下文对象，可用于存储状态信息
-
-    返回值:
-    - 选中的股票列表（最多position_count只）
-    """
-    # 示例：选择市值最小的position_count只股票
-    if not candidates:
-        return []
-
-    # 获取股票市值数据
-    market_values = []
-    for stock in candidates:
-        if f"system.total_mv" in params.get(stock, {}):
-            mv = params[stock]["system.total_mv"]
-            market_values.append((stock, mv))
-
-    # 按市值从小到大排序，选择最小的position_count只
-    market_values.sort(key=lambda x: x[1])
-    selected = [stock for stock, _ in market_values[:position_count]]
-
-    return selected`,
-          risk_control_func:
-            strategy.risk_control_func ||
-            `def risk_control_func(current_holdings, params, date, context=None):
-    """
-    风险控制函数 - 对当前持仓进行风险控制
-
-    参数说明:
-    - current_holdings: 当前持仓股票列表
-    - params: 参数字典，包含各种技术指标和数据
-    - date: 当前日期
-    - context: 上下文对象，可用于存储状态信息
-
-    返回值:
-    - 调整后的持仓股票列表（移除了需要卖出的股票）
-    """
-    if not current_holdings:
-        return []
-
-    sell_list = []
-
-    for stock in current_holdings:
-        stock_params = params.get(stock, {})
-
-        # 示例风控逻辑：EMA60线下穿时卖出
-        if "system.ema_60" in stock_params and "system.close" in stock_params:
-            ema_60 = stock_params["system.ema_60"]
-            close_price = stock_params["system.close"]
-
-            if close_price < ema_60:
-                sell_list.append(stock)
-
-    # 返回剔除卖出股票后的持仓列表
-    return [stock for stock in current_holdings if stock not in sell_list]`,
+          description: `复制自 ${strategy.creator_name}.${strategy.strategy_name}`,
         };
 
-        // 调用API创建复制的策略
         const response = await axios.post(
-          "http://localhost:5000/api/strategies",
-          copiedStrategyData,
+          `http://localhost:5000/api/strategies/${strategyId}/copy`,
+          copyData,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -572,7 +497,10 @@ export default {
         );
 
         if (response.data.code === 200) {
-          ElMessage.success("策略复制成功，正在跳转到编辑页面...");
+          const result = response.data.data;
+          ElMessage.success(
+            `策略复制成功！已自动复制 ${result.copied_indicators} 个指标和 ${result.copied_params} 个参数，正在跳转到编辑页面...`
+          );
 
           // 重新刷新策略列表，确保复制的策略按创建时间排序
           await fetchStrategies();
@@ -581,8 +509,8 @@ export default {
           router.push({
             name: "StrategyDetail",
             params: {
-              creatorName: userInfo.user_name,
-              strategyName: copiedStrategyData.strategy_name,
+              creatorName: result.creator_name,
+              strategyName: result.strategy_name,
             },
           });
         } else {

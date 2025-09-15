@@ -338,9 +338,7 @@ def get_params(current_user):
         page = int(request.args.get("page", 1))
         page_size = int(request.args.get("page_size", 10))
         search_keyword = request.args.get("search", "").strip()
-        param_type_filter = request.args.get(
-            "param_type", "my"
-        )  # my, system, public, all
+        param_type_filter = request.args.get("param_type", "my")  # my, system, all
         param_source_type = request.args.get(
             "param_source_type", "all"
         )  # all, table, indicator
@@ -384,10 +382,6 @@ def get_params(current_user):
                     query_params.append(current_user_name)
                 elif param_type_filter == "system":
                     where_conditions.append("creator_name = 'system'")
-                elif param_type_filter == "public":
-                    where_conditions.append("creator_name != %s")
-                    query_params.append(current_user_name)
-                # param_type_filter == 'all' 时不添加条件
 
                 # 根据参数来源类型筛选
                 if param_source_type != "all":
@@ -1227,7 +1221,11 @@ def get_strategies(current_user):
             elif strategy_type_filter == "system":
                 conditions.append("s.creator_name = 'system'")
             elif strategy_type_filter == "public":
-                conditions.append("s.public = TRUE")
+                # 公开策略：只显示其他普通用户的公开策略（不包括系统策略和自己的策略）
+                conditions.append(
+                    "s.public = TRUE AND s.creator_name != 'system' AND s.creator_name != %s"
+                )
+                params.append(current_user["user_name"])
 
             # 根据搜索关键词筛选
             if search_keyword:
@@ -1722,6 +1720,373 @@ def delete_strategy(current_user, creator_name, strategy_name):
         return jsonify({"code": 500, "message": "删除策略失败，请重试"})
 
 
+# 复制策略API
+@app.route("/api/strategies/<creator_name>/<strategy_name>/copy", methods=["POST"])
+@token_required
+def copy_strategy(current_user, creator_name, strategy_name):
+    """复制策略接口（包含深度复制参数关系）"""
+    try:
+        data = request.get_json()
+        new_strategy_name = data.get("strategy_name", "").strip()
+        new_description = data.get("description", "").strip()
+
+        if not new_strategy_name:
+            return jsonify({"code": 400, "message": "新策略名称不能为空"})
+
+        # 验证策略名格式（仅允许中文、英文、数字、下划线）
+        if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", new_strategy_name):
+            return jsonify(
+                {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
+            )
+
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                current_user_name = current_user["user_name"]
+
+                # 检查源策略是否存在
+                check_strategy_sql = """
+                SELECT * FROM Strategy 
+                WHERE creator_name = %s AND strategy_name = %s
+                """
+                cursor.execute(check_strategy_sql, (creator_name, strategy_name))
+                source_strategy = cursor.fetchone()
+
+                if not source_strategy:
+                    return jsonify({"code": 404, "message": "源策略不存在"})
+
+                # 检查访问权限（如果不是公开策略且不是创建者，则不能复制）
+                if (
+                    not source_strategy["public"]
+                    and source_strategy["creator_name"] != current_user_name
+                ):
+                    return jsonify({"code": 403, "message": "无权限复制此策略"})
+
+                # 检查新策略名是否已存在
+                check_name_sql = """
+                SELECT COUNT(*) as count FROM Strategy 
+                WHERE creator_name = %s AND strategy_name = %s
+                """
+                cursor.execute(check_name_sql, (current_user_name, new_strategy_name))
+                if cursor.fetchone()["count"] > 0:
+                    return jsonify({"code": 400, "message": "策略名称已存在"})
+
+                # 获取策略的所有参数关系
+                get_params_sql = """
+                SELECT param_creator_name, param_name 
+                FROM StrategyParamRel 
+                WHERE strategy_creator_name = %s AND strategy_name = %s
+                """
+                cursor.execute(get_params_sql, (creator_name, strategy_name))
+                param_relations = cursor.fetchall()
+
+                # 收集需要复制的参数和指标（递归处理依赖）
+                params_to_copy = set()  # (creator_name, param_name)
+                indicators_to_copy = set()  # (creator_name, indicator_name)
+                copied_params = {}  # 原参数 -> 新参数映射
+                copied_indicators = {}  # 原指标 -> 新指标映射
+
+                def collect_dependencies(param_creator, param_name):
+                    """递归收集参数和指标的依赖关系"""
+                    param_key = (param_creator, param_name)
+
+                    # 如果已经处理过，跳过
+                    if param_key in params_to_copy:
+                        return
+
+                    # 获取参数详情
+                    param_sql = """
+                    SELECT * FROM Param 
+                    WHERE creator_name = %s AND param_name = %s
+                    """
+                    cursor.execute(param_sql, (param_creator, param_name))
+                    param_info = cursor.fetchone()
+
+                    if not param_info:
+                        return
+
+                    # 如果参数不是当前用户的且不是系统的，需要复制
+                    if param_creator != current_user_name and param_creator != "system":
+                        params_to_copy.add(param_key)
+
+                        # 如果参数类型是指标，处理指标依赖
+                        if param_info["param_type"] == "indicator":
+                            indicator_id = param_info["data_id"]
+                            try:
+                                indicator_creator, indicator_name = indicator_id.split(
+                                    ".", 1
+                                )
+                                indicator_key = (indicator_creator, indicator_name)
+
+                                # 如果指标不是当前用户的且不是系统的，需要复制
+                                if (
+                                    indicator_creator != current_user_name
+                                    and indicator_creator != "system"
+                                ):
+                                    indicators_to_copy.add(indicator_key)
+
+                                    # 递归处理指标的参数依赖
+                                    indicator_params_sql = """
+                                    SELECT param_creator_name, param_name 
+                                    FROM IndicatorParamRel 
+                                    WHERE indicator_creator_name = %s AND indicator_name = %s
+                                    """
+                                    cursor.execute(
+                                        indicator_params_sql,
+                                        (indicator_creator, indicator_name),
+                                    )
+                                    for rel in cursor.fetchall():
+                                        collect_dependencies(
+                                            rel["param_creator_name"], rel["param_name"]
+                                        )
+                            except ValueError:
+                                pass  # 忽略格式错误的指标ID
+
+                # 收集所有需要复制的依赖
+                for rel in param_relations:
+                    collect_dependencies(rel["param_creator_name"], rel["param_name"])
+
+                # 复制指标
+                for indicator_creator, indicator_name in indicators_to_copy:
+                    # 生成新指标名
+                    new_indicator_name = f"{current_user_name}_{indicator_name}"
+                    counter = 1
+                    while True:
+                        check_indicator_sql = """
+                        SELECT COUNT(*) as count FROM Indicator 
+                        WHERE creator_name = %s AND indicator_name = %s
+                        """
+                        cursor.execute(
+                            check_indicator_sql, (current_user_name, new_indicator_name)
+                        )
+                        if cursor.fetchone()["count"] == 0:
+                            break
+                        new_indicator_name = (
+                            f"{current_user_name}_{indicator_name}_{counter}"
+                        )
+                        counter += 1
+
+                    # 复制指标
+                    copy_indicator_sql = """
+                    INSERT INTO Indicator 
+                    (creator_name, indicator_name, calculation_method, description, is_active, create_time, update_time)
+                    SELECT %s, %s, calculation_method, 
+                           CONCAT('复制自: ', creator_name, '.', indicator_name, 
+                                  CASE WHEN description IS NOT NULL THEN CONCAT(' - ', description) ELSE '' END),
+                           is_active, NOW(), NOW()
+                    FROM Indicator 
+                    WHERE creator_name = %s AND indicator_name = %s
+                    """
+                    cursor.execute(
+                        copy_indicator_sql,
+                        (
+                            current_user_name,
+                            new_indicator_name,
+                            indicator_creator,
+                            indicator_name,
+                        ),
+                    )
+
+                    copied_indicators[(indicator_creator, indicator_name)] = (
+                        current_user_name,
+                        new_indicator_name,
+                    )
+
+                # 复制参数
+                for param_creator, param_name in params_to_copy:
+                    # 生成新参数名
+                    new_param_name = f"{current_user_name}_{param_name}"
+                    counter = 1
+                    while True:
+                        check_param_sql = """
+                        SELECT COUNT(*) as count FROM Param 
+                        WHERE creator_name = %s AND param_name = %s
+                        """
+                        cursor.execute(
+                            check_param_sql, (current_user_name, new_param_name)
+                        )
+                        if cursor.fetchone()["count"] == 0:
+                            break
+                        new_param_name = f"{current_user_name}_{param_name}_{counter}"
+                        counter += 1
+
+                    # 获取原参数信息
+                    param_sql = """
+                    SELECT * FROM Param 
+                    WHERE creator_name = %s AND param_name = %s
+                    """
+                    cursor.execute(param_sql, (param_creator, param_name))
+                    param_info = cursor.fetchone()
+
+                    # 处理data_id（如果是指标类型）
+                    new_data_id = param_info["data_id"]
+                    if param_info["param_type"] == "indicator":
+                        try:
+                            orig_indicator_creator, orig_indicator_name = param_info[
+                                "data_id"
+                            ].split(".", 1)
+                            if (
+                                orig_indicator_creator,
+                                orig_indicator_name,
+                            ) in copied_indicators:
+                                new_indicator_creator, new_indicator_name = (
+                                    copied_indicators[
+                                        (orig_indicator_creator, orig_indicator_name)
+                                    ]
+                                )
+                                new_data_id = (
+                                    f"{new_indicator_creator}.{new_indicator_name}"
+                                )
+                        except ValueError:
+                            pass
+
+                    # 复制参数
+                    copy_param_sql = """
+                    INSERT INTO Param 
+                    (creator_name, param_name, param_type, data_id, history_days, predict_days, aggregation_func, create_time, update_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    cursor.execute(
+                        copy_param_sql,
+                        (
+                            current_user_name,
+                            new_param_name,
+                            param_info["param_type"],
+                            new_data_id,
+                            param_info["history_days"],
+                            param_info["predict_days"],
+                            param_info["aggregation_func"],
+                        ),
+                    )
+
+                    copied_params[(param_creator, param_name)] = (
+                        current_user_name,
+                        new_param_name,
+                    )
+
+                # 复制指标参数关系
+                for (indicator_creator, indicator_name), (
+                    new_indicator_creator,
+                    new_indicator_name,
+                ) in copied_indicators.items():
+                    # 获取原指标的参数关系
+                    orig_relations_sql = """
+                    SELECT param_creator_name, param_name 
+                    FROM IndicatorParamRel 
+                    WHERE indicator_creator_name = %s AND indicator_name = %s
+                    """
+                    cursor.execute(
+                        orig_relations_sql, (indicator_creator, indicator_name)
+                    )
+
+                    for rel in cursor.fetchall():
+                        # 确定使用的参数（复制的或原有的）
+                        rel_key = (rel["param_creator_name"], rel["param_name"])
+                        if rel_key in copied_params:
+                            final_param_creator, final_param_name = copied_params[
+                                rel_key
+                            ]
+                        else:
+                            final_param_creator, final_param_name = (
+                                rel["param_creator_name"],
+                                rel["param_name"],
+                            )
+
+                        # 创建新的指标参数关系
+                        copy_relation_sql = """
+                        INSERT INTO IndicatorParamRel 
+                        (indicator_creator_name, indicator_name, param_creator_name, param_name)
+                        VALUES (%s, %s, %s, %s)
+                        """
+                        cursor.execute(
+                            copy_relation_sql,
+                            (
+                                new_indicator_creator,
+                                new_indicator_name,
+                                final_param_creator,
+                                final_param_name,
+                            ),
+                        )
+
+                # 复制策略
+                copy_strategy_sql = """
+                INSERT INTO Strategy 
+                (creator_name, strategy_name, public, scope_type, scope_id, benchmark_index,
+                 select_func, risk_control_func, position_count, rebalance_interval,
+                 buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time)
+                SELECT %s, %s, %s, scope_type, scope_id, benchmark_index,
+                       select_func, risk_control_func, position_count, rebalance_interval,
+                       buy_fee_rate, sell_fee_rate, 
+                       CONCAT('复制自: ', creator_name, '.', strategy_name,
+                              CASE WHEN %s != '' THEN CONCAT(' - ', %s) 
+                                   WHEN strategy_desc IS NOT NULL THEN CONCAT(' - ', strategy_desc)
+                                   ELSE '' END),
+                       NOW(), NOW()
+                FROM Strategy 
+                WHERE creator_name = %s AND strategy_name = %s
+                """
+                cursor.execute(
+                    copy_strategy_sql,
+                    (
+                        current_user_name,
+                        new_strategy_name,
+                        False,  # 复制的策略默认为私有
+                        new_description,
+                        new_description,
+                        creator_name,
+                        strategy_name,
+                    ),
+                )
+
+                # 复制策略参数关系
+                for rel in param_relations:
+                    rel_key = (rel["param_creator_name"], rel["param_name"])
+                    if rel_key in copied_params:
+                        final_param_creator, final_param_name = copied_params[rel_key]
+                    else:
+                        final_param_creator, final_param_name = (
+                            rel["param_creator_name"],
+                            rel["param_name"],
+                        )
+
+                    copy_strategy_rel_sql = """
+                    INSERT INTO StrategyParamRel 
+                    (strategy_creator_name, strategy_name, param_creator_name, param_name)
+                    VALUES (%s, %s, %s, %s)
+                    """
+                    cursor.execute(
+                        copy_strategy_rel_sql,
+                        (
+                            current_user_name,
+                            new_strategy_name,
+                            final_param_creator,
+                            final_param_name,
+                        ),
+                    )
+
+                connection.commit()
+
+                return jsonify(
+                    {
+                        "code": 200,
+                        "message": "策略复制成功，已自动复制相关参数和指标",
+                        "data": {
+                            "creator_name": current_user_name,
+                            "strategy_name": new_strategy_name,
+                            "copied_indicators": len(copied_indicators),
+                            "copied_params": len(copied_params),
+                        },
+                    }
+                )
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"复制策略过程中发生错误: {str(e)}")
+        return jsonify({"code": 500, "message": f"复制策略失败: {str(e)}"})
+
+
 # 获取策略参数列表API
 @app.route("/api/strategies/<creator_name>/<strategy_name>/params", methods=["GET"])
 @token_required
@@ -2035,6 +2400,121 @@ def get_indicators(current_user):
     except Exception as e:
         logger.error(f"获取指标列表过程中发生错误: {str(e)}")
         return jsonify({"message": f"获取指标列表失败: {str(e)}"}), 500
+
+
+# 复制指标API
+@app.route("/api/indicators/<indicator_composite_id>/copy", methods=["POST"])
+@token_required
+def copy_indicator(current_user, indicator_composite_id):
+    """复制指标接口，同时复制指标参数关系"""
+    try:
+        # 解析复合ID
+        parts = indicator_composite_id.split(".")
+        if len(parts) != 2:
+            return jsonify({"message": "无效的指标ID格式"}), 400
+
+        original_creator_name, original_indicator_name = parts
+
+        # 获取请求数据
+        data = request.get_json()
+        new_indicator_name = data.get(
+            "indicator_name", f"复制_{original_indicator_name}"
+        )
+        new_description = data.get("description", "")
+
+        # 获取当前用户信息
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 获取当前用户名
+                cursor.execute(
+                    "SELECT user_name FROM User WHERE user_id = %s",
+                    (current_user["user_id"],),
+                )
+                user_info = cursor.fetchone()
+                if not user_info:
+                    return jsonify({"message": "用户不存在"}), 404
+
+                current_user_name = user_info["user_name"]
+
+                # 检查新指标名称是否已存在
+                cursor.execute(
+                    "SELECT 1 FROM Indicator WHERE creator_name = %s AND indicator_name = %s",
+                    (current_user_name, new_indicator_name),
+                )
+                if cursor.fetchone():
+                    return jsonify({"message": "指标名称已存在"}), 400
+
+                # 获取原始指标信息
+                cursor.execute(
+                    "SELECT * FROM Indicator WHERE creator_name = %s AND indicator_name = %s",
+                    (original_creator_name, original_indicator_name),
+                )
+                original_indicator = cursor.fetchone()
+                if not original_indicator:
+                    return jsonify({"message": "原始指标不存在"}), 404
+
+                # 创建新指标
+                cursor.execute(
+                    """
+                    INSERT INTO Indicator (creator_name, indicator_name, calculation_method, description, is_active)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        current_user_name,
+                        new_indicator_name,
+                        original_indicator["calculation_method"],
+                        new_description or original_indicator["description"],
+                        True,
+                    ),
+                )
+
+                # 复制指标参数关系
+                cursor.execute(
+                    """
+                    SELECT param_creator_name, param_name 
+                    FROM IndicatorParamRel 
+                    WHERE indicator_creator_name = %s AND indicator_name = %s
+                    """,
+                    (original_creator_name, original_indicator_name),
+                )
+                param_relations = cursor.fetchall()
+
+                for relation in param_relations:
+                    cursor.execute(
+                        """
+                        INSERT INTO IndicatorParamRel (indicator_creator_name, indicator_name, param_creator_name, param_name)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            current_user_name,
+                            new_indicator_name,
+                            relation["param_creator_name"],
+                            relation["param_name"],
+                        ),
+                    )
+
+                connection.commit()
+
+                return (
+                    jsonify(
+                        {
+                            "message": "指标复制成功",
+                            "data": {
+                                "creator_name": current_user_name,
+                                "indicator_name": new_indicator_name,
+                            },
+                        }
+                    ),
+                    200,
+                )
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"复制指标过程中发生错误: {str(e)}")
+        return jsonify({"message": "复制指标失败，请重试"}), 500
 
 
 # 创建指标API

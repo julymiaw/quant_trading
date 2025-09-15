@@ -11,8 +11,8 @@
         <h1>{{ strategy.strategy_name }}</h1>
         <p class="strategy-intro">{{ strategy.strategy_desc }}</p>
       </div>
-      <div class="header-actions" v-if="canEdit">
-        <el-button type="primary" @click="showSaveCodeDialog">
+      <div class="header-actions">
+        <el-button v-if="canEdit" type="primary" @click="showSaveCodeDialog">
           <el-icon><Edit /></el-icon>
           编辑代码
         </el-button>
@@ -124,6 +124,7 @@
             v-if="canEdit">
             <template #default="scope">
               <el-button
+                v-if="canEdit"
                 type="warning"
                 size="small"
                 @click="removeParam(scope.row)"

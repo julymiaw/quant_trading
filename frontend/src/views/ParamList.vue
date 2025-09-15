@@ -10,7 +10,6 @@
           style="width: 150px; margin-right: 10px">
           <el-option label="我的参数" value="my" />
           <el-option label="系统参数" value="system" />
-          <el-option label="公开参数" value="public" />
         </el-select>
         <el-button type="primary" @click="showAddParamDialog">
           <el-icon><Plus /></el-icon>

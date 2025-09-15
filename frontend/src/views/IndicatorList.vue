@@ -10,7 +10,6 @@
           style="width: 150px; margin-right: 10px">
           <el-option label="我的指标" value="my" />
           <el-option label="系统指标" value="system" />
-          <el-option label="公开指标" value="public" />
         </el-select>
         <el-button type="primary" @click="showAddIndicatorDialog">
           <el-icon><Plus /></el-icon>
@@ -667,26 +666,56 @@ export default {
     };
 
     // 复制指标
-    const copyIndicator = (indicator) => {
+    const copyIndicator = async (indicator) => {
       const userInfo = getUserInfo();
       if (!userInfo) {
         ElMessage.error("请先登录");
         return;
       }
 
-      // 重置表单
-      Object.assign(indicatorForm, {
-        indicator_name: `复制_${indicator.indicator_name}`,
-        calculation_method: indicator.calculation_method,
-        description: indicator.description || "",
-        is_active: true,
-      });
+      try {
+        loading.value = true;
 
-      isEditMode.value = false;
-      editingIndicator.value = null;
-      indicatorDialogVisible.value = true;
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-      ElMessage.info("已复制指标，您可以修改后保存");
+        const indicatorId = `${indicator.creator_name}.${indicator.indicator_name}`;
+        const response = await axios.post(
+          `/api/indicators/${indicatorId}/copy`,
+          {
+            indicator_name: `复制_${indicator.indicator_name}`,
+            description: indicator.description || "",
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.data) {
+          ElMessage.success("指标复制成功，已自动复制相关参数关系");
+          // 刷新列表
+          await fetchIndicators();
+        }
+      } catch (error) {
+        console.error("复制指标失败:", error);
+        if (error.response) {
+          ElMessage.error(
+            `复制指标失败: ${
+              error.response.data.message || error.response.statusText
+            }`
+          );
+        } else {
+          ElMessage.error("复制指标失败，请重试");
+        }
+      } finally {
+        loading.value = false;
+      }
     };
 
     // 保存指标
