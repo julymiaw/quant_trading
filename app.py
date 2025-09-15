@@ -900,6 +900,9 @@ def get_suggestions(current_user):
             suggestions = handle_table_suggestions(input_text)
         elif node_type in ["策略", "参数", "指标"]:
             suggestions = handle_entity_suggestions(node_type, input_text)
+        elif node_type in ["股票", "指数", "基准"]:
+            # 从 tushare_cache 数据库中查询 stock_basic 或 index_basic
+            suggestions = handle_market_entity_suggestions(node_type, input_text)
 
         return jsonify({"success": True, "suggestions": suggestions})
 
@@ -962,6 +965,54 @@ def handle_entity_suggestions(node_type: str, input_text: str) -> list:
 
         # 返回完整的 creator.entity 格式
         return [f"{creator_name}.{entity}" for entity in entities]
+
+
+def handle_market_entity_suggestions(node_type: str, input_text: str) -> list:
+    """
+    处理股票/指数/基准的智能补全，返回对象列表 {code, name}
+    """
+    try:
+        conn = pymysql.connect(
+            host="localhost",
+            port=3306,
+            user="root",
+            password=config["db_password"],
+            database="tushare_cache",
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+        )
+        cur = conn.cursor()
+        q = input_text.strip()
+        if node_type == "股票":
+            if not q:
+                cur.execute("SELECT ts_code, name FROM stock_basic LIMIT 50")
+            else:
+                like = f"{q}%"
+                cur.execute(
+                    "SELECT ts_code, name FROM stock_basic WHERE ts_code LIKE %s OR name LIKE %s LIMIT 50",
+                    (like, like),
+                )
+        else:
+            # 指数或基准使用 index_basic
+            if not q:
+                cur.execute("SELECT ts_code, name FROM index_basic LIMIT 50")
+            else:
+                like = f"{q}%"
+                cur.execute(
+                    "SELECT ts_code, name FROM index_basic WHERE ts_code LIKE %s OR name LIKE %s LIMIT 50",
+                    (like, like),
+                )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [{"ts_code": r["ts_code"], "name": r.get("name") or ""} for r in rows]
+    except Exception as e:
+        logger.exception("查询市场实体建议失败")
+        try:
+            conn.close()
+        except:
+            pass
+        return []
 
 
 def get_table_fields(table_name: str) -> list:
