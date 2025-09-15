@@ -1943,7 +1943,7 @@ def copy_strategy(current_user, creator_name, strategy_name):
                     # 复制参数
                     copy_param_sql = """
                     INSERT INTO Param 
-                    (creator_name, param_name, param_type, data_id, history_days, predict_days, aggregation_func, create_time, update_time)
+                    (creator_name, param_name, param_type, data_id, pre_period, post_period, agg_func, creation_time, update_time)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                     """
                     cursor.execute(
@@ -1953,9 +1953,9 @@ def copy_strategy(current_user, creator_name, strategy_name):
                             new_param_name,
                             param_info["param_type"],
                             new_data_id,
-                            param_info["history_days"],
-                            param_info["predict_days"],
-                            param_info["aggregation_func"],
+                            param_info.get("pre_period", 0),
+                            param_info.get("post_period", 0),
+                            param_info.get("agg_func"),
                         ),
                     )
 
