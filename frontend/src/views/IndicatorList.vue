@@ -172,8 +172,7 @@
         <div class="params-list">
           <h3>已添加参数</h3>
           <el-table :data="currentIndicatorParams" style="width: 100%" border>
-            <el-table-column prop="param_name" label="参数ID" width="150" />
-            <el-table-column prop="data_id" label="数据来源ID" width="150" />
+            <el-table-column prop="param_name" label="参数名称" width="150" />
             <el-table-column prop="param_type" label="参数类型" width="95">
               <template #default="scope">
                 <el-tag
@@ -184,6 +183,7 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="data_id" label="数据来源" width="150" />
             <el-table-column prop="pre_period" label="历史天数" width="100" />
             <el-table-column prop="post_period" label="预测天数" width="100" />
             <el-table-column prop="agg_func" label="聚合函数" width="95" />
@@ -235,13 +235,11 @@
             <template v-else>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="参数ID" prop="param_name">
+                  <el-form-item label="参数名称" prop="param_name">
                     <el-input
                       v-model="addParamForm.param_name"
-                      placeholder="请输入参数ID" />
+                      placeholder="请输入参数名称" />
                   </el-form-item>
-                </el-col>
-                <el-col :span="12">
                   <el-form-item label="参数类型" prop="param_type">
                     <el-select
                       v-model="addParamForm.param_type"
@@ -250,21 +248,33 @@
                       <el-option label="指标" value="indicator" />
                     </el-select>
                   </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="数据来源ID" prop="data_id">
+                  <el-form-item label="数据来源" prop="data_id">
                     <SmartAutocomplete
                       v-model="addParamForm.data_id"
                       :node-type="
                         addParamForm.param_type === 'table' ? '数据表' : '指标'
                       "
-                      placeholder="请输入数据来源ID，如：daily.open"
+                      :placeholder="
+                        addParamForm.param_type === 'table'
+                          ? '示例：daily.close'
+                          : '示例：system.MACD'
+                      "
                       @select="handleDataSourceSelect" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
+                  <el-form-item label="历史天数" prop="pre_period">
+                    <el-input-number
+                      v-model="addParamForm.pre_period"
+                      :min="0"
+                      :max="365" />
+                  </el-form-item>
+                  <el-form-item label="预测天数" prop="post_period">
+                    <el-input-number
+                      v-model="addParamForm.post_period"
+                      :min="0"
+                      :max="365" />
+                  </el-form-item>
                   <el-form-item label="聚合函数" prop="agg_func">
                     <el-select
                       v-model="addParamForm.agg_func"
@@ -277,24 +287,6 @@
                       <el-option label="SUM" value="SUM" />
                       <el-option label="AVG" value="AVG" />
                     </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="向前取历史天数" prop="pre_period">
-                    <el-input-number
-                      v-model="addParamForm.pre_period"
-                      :min="0"
-                      :max="365" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="向后预测天数" prop="post_period">
-                    <el-input-number
-                      v-model="addParamForm.post_period"
-                      :min="0"
-                      :max="365" />
                   </el-form-item>
                 </el-col>
               </el-row>

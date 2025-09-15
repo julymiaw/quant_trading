@@ -54,8 +54,7 @@
         row-key="id"
         height="100%"
         :resizable="false">
-        <el-table-column prop="param_name" label="参数ID" width="150" />
-        <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
+        <el-table-column prop="param_name" label="参数名称" width="150" />
         <el-table-column prop="param_type" label="参数类型" width="120">
           <template #default="scope">
             <el-tag
@@ -64,8 +63,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
-        <el-table-column prop="post_period" label="向后预测天数" width="150" />
+        <el-table-column prop="data_id" label="数据来源" min-width="200" />
+        <el-table-column prop="pre_period" label="历史天数" width="120" />
+        <el-table-column prop="post_period" label="预测天数" width="120" />
         <el-table-column prop="agg_func" label="聚合函数" width="120">
           <template #default="scope">
             <el-tag v-if="scope.row.agg_func" type="info">{{
@@ -126,52 +126,60 @@
         :model="paramForm"
         :rules="paramRules"
         label-width="120px">
-        <el-form-item label="参数ID" prop="param_name">
-          <el-input v-model="paramForm.param_name" placeholder="请输入参数ID" />
-        </el-form-item>
-        <el-form-item label="参数类型" prop="param_type">
-          <el-select
-            v-model="paramForm.param_type"
-            placeholder="请选择参数类型">
-            <el-option label="数据表" value="table" />
-            <el-option label="指标" value="indicator" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="数据来源ID" prop="data_id">
-          <SmartAutocomplete
-            v-model="paramForm.data_id"
-            node-type="数据表"
-            placeholder="请输入数据来源ID，如：daily.open"
-            @select="handleDataSourceSelect" />
-        </el-form-item>
-        <el-form-item label="聚合函数" prop="agg_func">
-          <el-select
-            v-model="paramForm.agg_func"
-            placeholder="请选择聚合函数"
-            clearable>
-            <el-option label="SMA" value="SMA" />
-            <el-option label="EMA" value="EMA" />
-            <el-option label="MAX" value="MAX" />
-            <el-option label="MIN" value="MIN" />
-            <el-option label="SUM" value="SUM" />
-            <el-option label="AVG" value="AVG" />
-          </el-select>
-        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="向前取历史天数" prop="pre_period">
+            <el-form-item label="参数名称" prop="param_name">
+              <el-input
+                v-model="paramForm.param_name"
+                placeholder="请输入参数名称" />
+            </el-form-item>
+            <el-form-item label="参数类型" prop="param_type">
+              <el-select
+                v-model="paramForm.param_type"
+                placeholder="请选择参数类型">
+                <el-option label="数据表" value="table" />
+                <el-option label="指标" value="indicator" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="数据来源" prop="data_id">
+              <SmartAutocomplete
+                v-model="paramForm.data_id"
+                :node-type="
+                  paramForm.param_type === 'table' ? '数据表' : '指标'
+                "
+                :placeholder="
+                  paramForm.param_type === 'table'
+                    ? '示例：daily.close'
+                    : '示例：system.MACD'
+                "
+                @select="handleDataSourceSelect" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="历史天数" prop="pre_period">
               <el-input-number
                 v-model="paramForm.pre_period"
                 :min="0"
                 :max="365" />
             </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="向后预测天数" prop="post_period">
+            <el-form-item label="预测天数" prop="post_period">
               <el-input-number
                 v-model="paramForm.post_period"
                 :min="0"
                 :max="365" />
+            </el-form-item>
+            <el-form-item label="聚合函数" prop="agg_func">
+              <el-select
+                v-model="paramForm.agg_func"
+                placeholder="请选择聚合函数"
+                clearable>
+                <el-option label="SMA" value="SMA" />
+                <el-option label="EMA" value="EMA" />
+                <el-option label="MAX" value="MAX" />
+                <el-option label="MIN" value="MIN" />
+                <el-option label="SUM" value="SUM" />
+                <el-option label="AVG" value="AVG" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -575,6 +583,17 @@ export default {
         watchFilters();
       },
       { deep: true }
+    );
+
+    // 当参数类型改变时，清空之前选择的数据来源，避免仍使用旧类型的补全结果
+    watch(
+      () => paramForm.param_type,
+      (newVal, oldVal) => {
+        if (newVal !== oldVal) {
+          paramForm.data_id = "";
+          paramForm.agg_func = null;
+        }
+      }
     );
 
     return {
