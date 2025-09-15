@@ -257,7 +257,9 @@
                   <el-form-item label="数据来源ID" prop="data_id">
                     <SmartAutocomplete
                       v-model="addParamForm.data_id"
-                      node-type="数据表"
+                      :node-type="
+                        addParamForm.param_type === 'table' ? '数据表' : '指标'
+                      "
                       placeholder="请输入数据来源ID，如：daily.open"
                       @select="handleDataSourceSelect" />
                   </el-form-item>
@@ -1100,6 +1102,17 @@ export default {
         fetchIndicators();
       }, 500); // 500ms防抖
     });
+
+    // 当参数类型改变时，清空之前选择的数据来源，避免仍使用旧类型的补全结果
+    watch(
+      () => addParamForm.param_type,
+      (newVal, oldVal) => {
+        if (newVal !== oldVal) {
+          addParamForm.data_id = "";
+          addParamForm.agg_func = null;
+        }
+      }
+    );
 
     onMounted(() => {
       fetchIndicators();

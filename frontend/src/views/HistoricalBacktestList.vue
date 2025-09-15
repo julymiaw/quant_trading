@@ -60,19 +60,28 @@
         </el-table-column>
         <el-table-column prop="start_date" label="开始日期" width="140" />
         <el-table-column prop="end_date" label="结束日期" width="140" />
-        <el-table-column prop="initial_capital" label="初始资金(元)" width="120">
+        <el-table-column
+          prop="initial_capital"
+          label="初始资金(元)"
+          width="120">
           <template #default="scope">
-            {{ scope.row.initial_capital ? Number(scope.row.initial_capital).toLocaleString() : '-' }}
+            {{
+              scope.row.initial_capital
+                ? Number(scope.row.initial_capital).toLocaleString()
+                : "-"
+            }}
           </template>
         </el-table-column>
         <el-table-column prop="commission_rate" label="佣金费率" width="100">
           <template #default="scope">
-            {{ scope.row.commission_rate ? `${scope.row.commission_rate}%` : '-' }}
+            {{
+              scope.row.commission_rate ? `${scope.row.commission_rate}%` : "-"
+            }}
           </template>
         </el-table-column>
         <el-table-column prop="slippage_rate" label="滑点率" width="100">
           <template #default="scope">
-            {{ scope.row.slippage_rate ? `${scope.row.slippage_rate}%` : '-' }}
+            {{ scope.row.slippage_rate ? `${scope.row.slippage_rate}%` : "-" }}
           </template>
         </el-table-column>
         <el-table-column prop="run_time" label="发起时间" width="180">
@@ -118,8 +127,15 @@
           <h3>{{ selectedBacktest.strategy_name }} - 回测报告</h3>
           <div class="report-meta">
             <span>回测发起者：{{ selectedBacktest.creator_name }}</span>
-            <span>时间范围：{{ selectedBacktest.start_date }} 至 {{ selectedBacktest.end_date }}</span>
-            <span>初始资金：{{ Number(selectedBacktest.initial_capital).toLocaleString() }}元</span>
+            <span
+              >时间范围：{{ selectedBacktest.start_date }} 至
+              {{ selectedBacktest.end_date }}</span
+            >
+            <span
+              >初始资金：{{
+                Number(selectedBacktest.initial_capital).toLocaleString()
+              }}元</span
+            >
             <span>佣金费率：{{ selectedBacktest.commission_rate }}%</span>
             <span>滑点率：{{ selectedBacktest.slippage_rate }}%</span>
           </div>
@@ -129,7 +145,10 @@
           <div class="chart-container">
             <h4>回测净值曲线</h4>
             <div class="chart">
-              <img src="/report.png" alt="回测净值曲线" style="width: 100%; height: 100%; object-fit: cover;">
+              <img
+                src="/report.png"
+                alt="回测净值曲线"
+                style="width: 100%; height: 100%; object-fit: cover" />
             </div>
           </div>
           <div class="chart-container">
@@ -197,17 +216,17 @@ export default {
     // 格式化发起时间
     const formatStartTime = (startTime) => {
       if (!startTime) return "-";
-      
+
       // 假设startTime是日期时间字符串
       try {
         const date = new Date(startTime);
-        return date.toLocaleString('zh-CN', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
+        return date.toLocaleString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
         });
       } catch (error) {
         return startTime;
@@ -228,7 +247,7 @@ export default {
         //     type: backtestType.value
         //   }
         // });
-        
+
         // 模拟数据
         const mockData = {
           code: 200,
@@ -293,7 +312,7 @@ export default {
             total: 24,
           },
         };
-        
+
         backtests.value = mockData.data.list;
         total.value = mockData.data.total;
       } catch (error) {
@@ -312,14 +331,16 @@ export default {
 
     // 跳转到策略详情
     const goToStrategyDetail = (backtest) => {
-      router.push(`/strategy/${backtest.creator_name}/${backtest.strategy_name}`);
+      router.push(
+        `/strategy/${backtest.creator_name}/${backtest.strategy_name}`
+      );
     };
 
     // 查看回测报告
     const viewBacktestReport = async (backtest) => {
       selectedBacktest.value = backtest;
       reportDialogVisible.value = true;
-      
+
       // 等待弹窗渲染完成后，初始化图表
       await nextTick();
       // 实际项目中，这里应该初始化图表
@@ -346,47 +367,47 @@ export default {
     // 计算筛选后的回测列表
     const filteredBacktests = computed(() => {
       let filtered = [...backtests.value];
-      
+
       // 根据搜索关键词筛选策略名称（部分匹配）
       if (searchKeyword.value.trim()) {
         const keyword = searchKeyword.value.toLowerCase().trim();
-        filtered = filtered.filter(item => 
+        filtered = filtered.filter((item) =>
           item.strategy_name.toLowerCase().includes(keyword)
         );
       }
-      
+
       // 根据时间范围筛选发起时间
-      if (timeRange.value && timeRange.value !== 'all') {
+      if (timeRange.value && timeRange.value !== "all") {
         const now = new Date();
         let startDate = new Date();
-        
+
         switch (timeRange.value) {
-          case 'week':
+          case "week":
             // 一周内
             startDate.setDate(now.getDate() - 7);
             break;
-          case 'month':
+          case "month":
             // 一月内
             startDate.setMonth(now.getMonth() - 1);
             break;
-          case 'quarter':
+          case "quarter":
             // 三月内
             startDate.setMonth(now.getMonth() - 3);
             break;
           default:
             break;
         }
-        
-        filtered = filtered.filter(item => {
+
+        filtered = filtered.filter((item) => {
           if (!item.run_time) return false;
           const itemDate = new Date(item.run_time);
           return itemDate >= startDate && itemDate <= now;
         });
       }
-      
+
       // 更新总条数
       total.value = filtered.length;
-      
+
       // 分页处理
       const startIndex = (currentPage.value - 1) * pageSize.value;
       const endIndex = startIndex + pageSize.value;
