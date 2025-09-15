@@ -66,10 +66,11 @@
         <el-table-column prop="creator_name" label="创建者" width="120" />
         <el-table-column prop="is_active" label="状态" width="80">
           <template #default="scope">
-            <el-switch
-              v-model="scope.row.is_active"
-              @change="toggleIndicatorStatus(scope.row)"
-              :disabled="!isCurrentUserCreator(scope.row)" />
+            <el-tag
+              :type="scope.row.is_active ? 'success' : 'danger'"
+              size="small">
+              {{ scope.row.is_active ? "启用" : "禁用" }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column

@@ -79,7 +79,6 @@
             <span>{{ (strategy.sell_fee_rate * 100).toFixed(3) }}%</span>
           </div>
         </div>
-        <!-- 移除在基本信息卡片中显示策略描述与日期（已在页头展示简介） -->
       </el-card>
 
       <!-- 参数列表（始终展示，放在基础信息后） -->
@@ -141,22 +140,19 @@
         :loading="loading"
         style="margin-top: 20px">
         <template #header>
-          <div class="card-header">
+          <div
+            class="card-header clickable-header"
+            @click="toggleSection('select')">
             <span>选股函数</span>
-            <el-button
-              type="text"
-              @click="toggleSection('select')"
-              class="collapse-btn">
-              <el-icon>
-                <arrow-right v-if="selectCollapsed" />
-                <arrow-down v-else />
-              </el-icon>
-            </el-button>
+            <el-icon class="collapse-icon">
+              <arrow-right v-if="selectCollapsed" />
+              <arrow-down v-else />
+            </el-icon>
           </div>
         </template>
         <el-scrollbar
           v-if="!selectCollapsed"
-          height="400px"
+          max-height="400px"
           class="code-scrollbar">
           <div class="code-editor-wrapper">
             <CodeEditor
@@ -173,22 +169,19 @@
         :loading="loading"
         style="margin-top: 20px">
         <template #header>
-          <div class="card-header">
+          <div
+            class="card-header clickable-header"
+            @click="toggleSection('risk')">
             <span>风险控制函数</span>
-            <el-button
-              type="text"
-              @click="toggleSection('risk')"
-              class="collapse-btn">
-              <el-icon>
-                <arrow-right v-if="riskCollapsed" />
-                <arrow-down v-else />
-              </el-icon>
-            </el-button>
+            <el-icon>
+              <arrow-right v-if="riskCollapsed" />
+              <arrow-down v-else />
+            </el-icon>
           </div>
         </template>
         <el-scrollbar
           v-if="!riskCollapsed"
-          height="400px"
+          max-height="400px"
           class="code-scrollbar">
           <div class="code-editor-wrapper">
             <CodeEditor
@@ -1519,5 +1512,84 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+}
+
+.info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 15px;
+  align-items: center;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 200px; /* 设置最小宽度，防止内容过于拥挤 */
+}
+
+.info-item label {
+  font-weight: 500;
+  margin-right: 10px;
+  white-space: nowrap; /* 防止标签文字换行 */
+}
+
+.info-item span,
+.info-item .el-tag {
+  flex-shrink: 0; /* 防止内容被压缩 */
+}
+
+/* 对于较小屏幕的响应式处理 */
+@media (max-width: 1200px) {
+  .info-item {
+    min-width: 180px;
+  }
+}
+
+@media (max-width: 768px) {
+  .info-grid {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .info-item {
+    min-width: unset;
+    flex: none;
+  }
+}
+
+/* 可点击的标题行样式 */
+.clickable-header {
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 12px;
+  margin: -8px -12px; /* 扩大点击区域 */
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.clickable-header:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.clickable-header:active {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 折叠图标样式调整 */
+.collapse-icon {
+  color: rgba(0, 0, 0, 0.55);
+  transition: transform 0.3s ease, color 0.2s ease;
+  font-size: 16px;
+}
+
+.clickable-header:hover .collapse-icon {
+  color: rgba(0, 0, 0, 0.75);
+}
+
+/* 移除原来的独立按钮样式 */
+.collapse-btn {
+  /* 删除这个类的样式，因为不再需要单独的按钮 */
 }
 </style>

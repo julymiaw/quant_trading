@@ -66,7 +66,9 @@
         <el-table-column prop="creator_name" label="创建者" width="120" />
         <el-table-column prop="public" label="是否公开" width="100">
           <template #default="scope">
-            <el-switch v-model="scope.row.public" disabled />
+            <el-tag :type="scope.row.public ? 'success' : 'info'" size="small">
+              {{ scope.row.public ? "公开" : "私有" }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="scope_type" label="生效范围" width="120">
