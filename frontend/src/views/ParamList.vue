@@ -10,7 +10,6 @@
           style="width: 150px; margin-right: 10px">
           <el-option label="我的参数" value="my" />
           <el-option label="系统参数" value="system" />
-          <el-option label="公开参数" value="public" />
         </el-select>
         <el-button type="primary" @click="showAddParamDialog">
           <el-icon><Plus /></el-icon>
@@ -52,9 +51,9 @@
         style="width: 100%"
         border
         row-key="id"
-        height="100%">
-        <el-table-column prop="param_name" label="参数ID" width="150" />
-        <el-table-column prop="data_id" label="数据来源ID" min-width="200" />
+        height="100%"
+        :resizable="false">
+        <el-table-column prop="param_name" label="参数名称" width="150" />
         <el-table-column prop="param_type" label="参数类型" width="120">
           <template #default="scope">
             <el-tag
@@ -63,8 +62,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="pre_period" label="向前取历史天数" width="150" />
-        <el-table-column prop="post_period" label="向后预测天数" width="150" />
+        <el-table-column prop="data_id" label="数据来源" min-width="200" />
+        <el-table-column prop="pre_period" label="历史天数" width="120" />
+        <el-table-column prop="post_period" label="预测天数" width="120" />
         <el-table-column prop="agg_func" label="聚合函数" width="120">
           <template #default="scope">
             <el-tag v-if="scope.row.agg_func" type="info">{{
@@ -75,7 +75,7 @@
         </el-table-column>
         <el-table-column prop="creator_name" label="创建者" width="120" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
@@ -125,52 +125,60 @@
         :model="paramForm"
         :rules="paramRules"
         label-width="120px">
-        <el-form-item label="参数ID" prop="param_name">
-          <el-input v-model="paramForm.param_name" placeholder="请输入参数ID" />
-        </el-form-item>
-        <el-form-item label="参数类型" prop="param_type">
-          <el-select
-            v-model="paramForm.param_type"
-            placeholder="请选择参数类型">
-            <el-option label="数据表" value="table" />
-            <el-option label="指标" value="indicator" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="数据来源ID" prop="data_id">
-          <SmartAutocomplete
-            v-model="paramForm.data_id"
-            node-type="数据表"
-            placeholder="请输入数据来源ID，如：daily.open"
-            @select="handleDataSourceSelect" />
-        </el-form-item>
-        <el-form-item label="聚合函数" prop="agg_func">
-          <el-select
-            v-model="paramForm.agg_func"
-            placeholder="请选择聚合函数"
-            clearable>
-            <el-option label="SMA" value="SMA" />
-            <el-option label="EMA" value="EMA" />
-            <el-option label="MAX" value="MAX" />
-            <el-option label="MIN" value="MIN" />
-            <el-option label="SUM" value="SUM" />
-            <el-option label="AVG" value="AVG" />
-          </el-select>
-        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="向前取历史天数" prop="pre_period">
+            <el-form-item label="参数名称" prop="param_name">
+              <el-input
+                v-model="paramForm.param_name"
+                placeholder="请输入参数名称" />
+            </el-form-item>
+            <el-form-item label="参数类型" prop="param_type">
+              <el-select
+                v-model="paramForm.param_type"
+                placeholder="请选择参数类型">
+                <el-option label="数据表" value="table" />
+                <el-option label="指标" value="indicator" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="数据来源" prop="data_id">
+              <SmartAutocomplete
+                v-model="paramForm.data_id"
+                :node-type="
+                  paramForm.param_type === 'table' ? '数据表' : '指标'
+                "
+                :placeholder="
+                  paramForm.param_type === 'table'
+                    ? '示例：daily.close'
+                    : '示例：system.MACD'
+                "
+                @select="handleDataSourceSelect" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="历史天数" prop="pre_period">
               <el-input-number
                 v-model="paramForm.pre_period"
                 :min="0"
                 :max="365" />
             </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="向后预测天数" prop="post_period">
+            <el-form-item label="预测天数" prop="post_period">
               <el-input-number
                 v-model="paramForm.post_period"
                 :min="0"
                 :max="365" />
+            </el-form-item>
+            <el-form-item label="聚合函数" prop="agg_func">
+              <el-select
+                v-model="paramForm.agg_func"
+                placeholder="请选择聚合函数"
+                clearable>
+                <el-option label="SMA" value="SMA" />
+                <el-option label="EMA" value="EMA" />
+                <el-option label="MAX" value="MAX" />
+                <el-option label="MIN" value="MIN" />
+                <el-option label="SUM" value="SUM" />
+                <el-option label="AVG" value="AVG" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -203,6 +211,16 @@ export default {
   setup() {
     const loading = ref(false);
     const params = ref([]);
+    // Sort helper: newest create_time first
+    const sortByCreateTimeDesc = (arr) => {
+      if (!arr || !Array.isArray(arr)) return arr;
+      arr.sort((a, b) => {
+        const ta = a && a.create_time ? new Date(a.create_time).getTime() : 0;
+        const tb = b && b.create_time ? new Date(b.create_time).getTime() : 0;
+        return tb - ta;
+      });
+      return arr;
+    };
     const searchKeyword = ref("");
     const paramType = ref("my");
     const paramSourceType = ref("all");
@@ -324,6 +342,7 @@ export default {
 
         if (response.data && response.data.data) {
           params.value = response.data.data.params || [];
+          sortByCreateTimeDesc(params.value);
           total.value = response.data.data.total || 0;
         } else {
           params.value = [];
@@ -506,7 +525,7 @@ export default {
 
         paramDialogVisible.value = false;
 
-        // 重新获取参数列表
+        // 重新获取参数列表，确保按创建时间排序，新添加/复制的参数会出现在正确位置
         await fetchParams();
       } catch (error) {
         console.error("保存参数失败:", error);
@@ -563,6 +582,17 @@ export default {
         watchFilters();
       },
       { deep: true }
+    );
+
+    // 当参数类型改变时，清空之前选择的数据来源，避免仍使用旧类型的补全结果
+    watch(
+      () => paramForm.param_type,
+      (newVal, oldVal) => {
+        if (newVal !== oldVal) {
+          paramForm.data_id = "";
+          paramForm.agg_func = null;
+        }
+      }
     );
 
     return {
@@ -652,5 +682,11 @@ export default {
   justify-content: flex-end;
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* Prevent action buttons from wrapping and add spacing */
+.el-table .cell .el-button {
+  white-space: nowrap;
+  margin-right: 8px;
 }
 </style>

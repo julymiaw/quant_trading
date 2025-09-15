@@ -19,7 +19,15 @@
         @click.stop="selectSuggestion(suggestion, index)"
         @mousedown.prevent
         @mouseenter="selectedIndex = index">
-        {{ suggestion }}
+        <template v-if="typeof suggestion === 'string'">
+          {{ suggestion }}
+        </template>
+        <template v-else>
+          <span style="font-weight: 500">{{ suggestion.code }}</span>
+          <span style="color: #999; margin-left: 8px">{{
+            suggestion.name
+          }}</span>
+        </template>
       </div>
       <div v-if="suggestions.length > 5" class="scroll-hint">
         滚动查看更多选项...
@@ -42,7 +50,11 @@ export default {
     nodeType: {
       type: String,
       required: true,
-      validator: (value) => ["策略", "参数", "指标", "数据表"].includes(value),
+      // 扩展支持股票/指数/基准等类型
+      validator: (value) =>
+        ["策略", "参数", "指标", "数据表", "股票", "指数", "基准"].includes(
+          value
+        ),
     },
     placeholder: {
       type: String,
@@ -77,6 +89,23 @@ export default {
       emit("update:modelValue", newValue);
     });
 
+    // 监听nodeType变化，重新获取建议
+    watch(
+      () => props.nodeType,
+      (newNodeType, oldNodeType) => {
+        if (newNodeType !== oldNodeType) {
+          // 清空当前建议列表
+          suggestions.value = [];
+          selectedIndex.value = -1;
+
+          // 如果输入框有焦点或有内容，重新获取建议
+          if (showSuggestions.value || inputValue.value) {
+            fetchSuggestions(inputValue.value);
+          }
+        }
+      }
+    );
+
     // 处理输入事件
     const handleInput = (value) => {
       inputValue.value = value;
@@ -97,11 +126,8 @@ export default {
 
     // 处理焦点事件
     const handleFocus = () => {
-      if (inputValue.value || suggestions.value.length > 0) {
-        showSuggestions.value = true;
-      } else {
-        fetchSuggestions("");
-      }
+      // 总是重新获取建议，确保 nodeType 变化后能正确更新
+      fetchSuggestions(inputValue.value || "");
     };
 
     // 处理失焦事件
@@ -143,7 +169,18 @@ export default {
         );
 
         if (response.data.success) {
-          suggestions.value = response.data.suggestions || [];
+          const raw = response.data.suggestions || [];
+          suggestions.value = raw.map((it) => {
+            if (typeof it === "string") return it;
+            // 支持后端返回 {code, name} 或 {ts_code, name}
+            if (it && (it.code || it.ts_code)) {
+              return {
+                code: it.code || it.ts_code,
+                name: it.name || it.fullname || "",
+              };
+            }
+            return String(it);
+          });
           showSuggestions.value = suggestions.value.length > 0;
           selectedIndex.value = -1;
         } else {
@@ -161,12 +198,14 @@ export default {
     // 选择建议
     const selectSuggestion = (suggestion, index) => {
       // 直接设置输入框的值
-      inputValue.value = suggestion;
+      const valueToSet =
+        typeof suggestion === "string" ? suggestion : suggestion.code;
+      inputValue.value = valueToSet;
       selectedIndex.value = index;
       showSuggestions.value = false;
 
       // 触发事件通知父组件
-      emit("update:modelValue", suggestion);
+      emit("update:modelValue", valueToSet);
       emit("select", suggestion);
 
       // 让输入框重新获得焦点
@@ -176,7 +215,7 @@ export default {
           if (input) {
             input.focus();
             // 将光标移到文本末尾
-            input.setSelectionRange(suggestion.length, suggestion.length);
+            input.setSelectionRange(valueToSet.length, valueToSet.length);
           }
         }
       });

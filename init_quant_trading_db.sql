@@ -53,6 +53,7 @@ CREATE TABLE Strategy (
     creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用User.user_name',
     strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称',
     public BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否公开（管理员创建的为public，用户可选）',
+    benchmark_index VARCHAR(20) DEFAULT NULL COMMENT '基准指数代码（可为空）',
     scope_type ENUM('all', 'single_stock', 'index') NOT NULL COMMENT '策略生效范围类型',
     scope_id VARCHAR(50) COMMENT '股票ID或指数ID（仅当scope_type为单只或指数时填写）',
     select_func TEXT NOT NULL COMMENT '调仓选股函数，调仓日调用，返回目标持仓',
@@ -227,7 +228,7 @@ VALUES (
 
 -- 4. 插入策略（小市值策略、双均线策略、MACD策略）
 INSERT INTO Strategy (
-    creator_name, strategy_name, public, scope_type, scope_id, select_func, risk_control_func,
+    creator_name, strategy_name, public, scope_type, scope_id, benchmark_index, select_func, risk_control_func,
     position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc, create_time, update_time
 ) VALUES
 (
@@ -236,6 +237,7 @@ INSERT INTO Strategy (
     TRUE,
     'all',
     NULL,
+    '000300.SH',
     'def select_func(candidates, params, position_count, current_holdings, date, context=None):\n    filtered = [s for s in candidates if 2e9 <= params[s]["system.total_mv"] <= 3e9]\n    sorted_stocks = sorted(filtered, key=lambda s: params[s]["system.total_mv"])\n    return sorted_stocks[:position_count]',
     'def risk_control_func(current_holdings, params, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if params[stock]["system.ema_60"] > params[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     3,
@@ -252,6 +254,7 @@ INSERT INTO Strategy (
     TRUE,
     'single_stock',
     '000001.SZ',
+    '000300.SH',
     'def select_func(candidates, params, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    close = params[stock]["system.close"]\n    ema_5 = params[stock]["system.ema_5"]\n    if close > 1.01 * ema_5:\n        return [stock]\n    elif close < ema_5:\n        return []\n    return current_holdings',
     'def risk_control_func(current_holdings, params, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if params[stock]["system.ema_60"] > params[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     1,
@@ -268,6 +271,7 @@ INSERT INTO Strategy (
     TRUE,
     'single_stock',
     '000001.SZ',
+    '000300.SH',
     'def select_func(candidates, params, position_count, current_holdings, date, context=None):\n    stock = candidates[0]\n    macd_ema_9 = params[stock]["system.macd_ema_9"]\n    close = params[stock]["system.close"]\n    if macd_ema_9 < close:\n        return [stock]\n    elif macd_ema_9 > close:\n        return []\n    return current_holdings',
     'def risk_control_func(current_holdings, params, date, context=None):\n    sell_list = []\n    for stock in current_holdings:\n        if params[stock]["system.ema_60"] > params[stock]["system.close"]:\n            sell_list.append(stock)\n    return [h for h in current_holdings if h not in sell_list]',
     1,

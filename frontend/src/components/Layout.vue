@@ -12,18 +12,20 @@
           :default-active="activeMenu"
           class="nav-menu">
           <el-menu-item index="/" @click="$router.push('/')">
-            <el-icon><HomeFilled /></el-icon>
+            <el-icon><Menu /></el-icon>
             <span>策略管理</span>
           </el-menu-item>
-          <el-menu-item
-            index="/indicators"
-            @click="$router.push('/indicators')">
+          <el-menu-item index="/indicators" @click="$router.push('/indicators')">
             <el-icon><DataAnalysis /></el-icon>
             <span>指标管理</span>
           </el-menu-item>
           <el-menu-item index="/params" @click="$router.push('/params')">
             <el-icon><Setting /></el-icon>
             <span>参数管理</span>
+          </el-menu-item>
+          <el-menu-item index="/backtest" @click="$router.push('/backtest')">
+            <el-icon><Histogram /></el-icon>
+            <span>历史回测</span>
           </el-menu-item>
         </el-menu>
       </div>
@@ -62,6 +64,7 @@
       title="用户信息"
       v-model="userInfoDialogVisible"
       width="400px"
+      append-to-body
       :before-close="handleUserInfoDialogClose">
       <el-descriptions :column="1" border>
         <el-descriptions-item label="用户名">{{
@@ -105,6 +108,7 @@ import {
   ArrowLeft,
   CaretBottom,
   User,
+  Histogram,
 } from "@element-plus/icons-vue";
 
 export default {
@@ -116,6 +120,7 @@ export default {
     ArrowLeft,
     CaretBottom,
     User,
+    Histogram,
   },
   setup() {
     const router = useRouter();

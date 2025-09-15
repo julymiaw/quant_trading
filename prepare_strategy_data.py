@@ -12,12 +12,26 @@ import os
 import pandas as pd
 from collections import defaultdict
 from typing import Dict, Set, Tuple, List
+from decimal import Decimal
 
 import pymysql
 import numpy as np
 
 # 假设有如下数据库/缓存/接口工具
 from tushare_cache_client import TushareCacheClient
+
+
+def convert_decimal_to_float(obj):
+    """递归转换字典中的Decimal类型为float类型，便于JSON序列化"""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_decimal_to_float(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimal_to_float(item) for item in obj]
+    else:
+        return obj
+
 
 # 回测模块必需的参数列表（由回测模块同学要求）
 # 这些参数必须出现在所有策略的准备数据中，以确保回测功能正常运行
@@ -94,9 +108,10 @@ class DataPreparer:
         raise ValueError(f"无法纠正为交易日: {date}")
 
     def get_strategy_info(self, creator_name: str, strategy_name: str) -> Dict:
-        # 查询Strategy表，获取scope_type、scope_id等
+        # 查询Strategy表，获取完整的策略信息
         sql = """
-            SELECT scope_type, scope_id
+            SELECT scope_type, scope_id, benchmark_index, select_func, risk_control_func,
+                   position_count, rebalance_interval, buy_fee_rate, sell_fee_rate, strategy_desc
             FROM Strategy
             WHERE creator_name=%s AND strategy_name=%s
         """
@@ -105,7 +120,20 @@ class DataPreparer:
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"未找到策略 {creator_name}.{strategy_name}")
-            return {"scope_type": row[0], "scope_id": row[1]}
+            strategy_info = {
+                "scope_type": row[0],
+                "scope_id": row[1],
+                "benchmark_index": row[2],
+                "select_func": row[3],
+                "risk_control_func": row[4],
+                "position_count": row[5],
+                "rebalance_interval": row[6],
+                "buy_fee_rate": row[7],
+                "sell_fee_rate": row[8],
+                "strategy_desc": row[9],
+            }
+            # 转换Decimal类型为float，便于JSON序列化
+            return convert_decimal_to_float(strategy_info)
 
     def get_strategy_params(
         self, creator_name: str, strategy_name: str
@@ -508,6 +536,24 @@ class DataPreparer:
         # 5. 纠正start_date和end_date为交易日
         start_date_corr = self.correct_to_trade_date(start_date, direction="forward")
         end_date_corr = self.correct_to_trade_date(end_date, direction="backward")
+        # 如果策略定义了基准指数，提前准备基准指数日线数据（在后续会保存到输出目录）
+        benchmark_df = None
+        benchmark_index = strategy_info.get("benchmark_index")
+        if benchmark_index:
+            try:
+                benchmark_df = self.client.index_daily(
+                    ts_code=benchmark_index,
+                    start_date=start_date_corr.replace("-", ""),
+                    end_date=end_date_corr.replace("-", ""),
+                )
+                # 统一trade_date格式为 YYYY-MM-DD
+                benchmark_df = benchmark_df.copy()
+                benchmark_df["trade_date"] = pd.to_datetime(
+                    benchmark_df["trade_date"]
+                ).dt.strftime("%Y-%m-%d")
+            except Exception as e:
+                # 不阻塞主流程，但记录异常
+                print(f"警告：获取基准指数 {benchmark_index} 日线数据失败: {e}")
         # 6. 构建依赖DAG，推导所有需要准备的数据节点及其最大范围
         dag_info = self.build_dependency_dag(
             strategy_params, start_date_corr, end_date_corr
@@ -554,35 +600,45 @@ class DataPreparer:
         big_df.to_csv(f"{output_base}_params.csv", index=False)
         # big_df.to_parquet(f"{output_base}_params.parquet", index=False)
 
-        return {
+        benchmark_data_path = None
+        if benchmark_df is not None:
+            benchmark_data_path = f"{output_base}_benchmark.csv"
+            try:
+                benchmark_df.to_csv(benchmark_data_path, index=False)
+            except Exception as e:
+                print(f"警告：保存基准指数数据到 {benchmark_data_path} 失败: {e}")
+
+        result = {
+            # 回测同学需要的核心信息
             "stock_list": stock_list,
-            "dag_info": dag_info,
-            "param_data_path": f"{output_base}_params.csv",
+            "backtest_start_date": start_date_corr,  # 纠正后的回测开始日期
+            "backtest_end_date": end_date_corr,  # 纠正后的回测结束日期
             "param_columns": param_names,
+            "select_func": strategy_info["select_func"],  # 选股函数
+            "risk_control_func": strategy_info["risk_control_func"],  # 风控函数
+            # 策略基本信息
+            "strategy_info": {
+                "creator_name": creator_name,
+                "strategy_name": strategy_name,
+                "scope_type": strategy_info["scope_type"],
+                "scope_id": strategy_info["scope_id"],
+                "position_count": strategy_info["position_count"],
+                "rebalance_interval": strategy_info["rebalance_interval"],
+                "buy_fee_rate": strategy_info["buy_fee_rate"],
+                "sell_fee_rate": strategy_info["sell_fee_rate"],
+                "strategy_desc": strategy_info["strategy_desc"],
+            },
         }
-
-
-def tuple_to_str(t):
-    if isinstance(t, tuple):
-        return "|".join(str(x) for x in t)
-    return str(t)
-
-
-def dag_info_to_jsonable(dag_info):
-    # order: list of tuple -> list of str
-    order = [tuple_to_str(node) for node in dag_info["order"]]
-    # ranges: dict of tuple->tuple -> dict of str->tuple
-    ranges = {tuple_to_str(k): v for k, v in dag_info["ranges"].items()}
-    return {"order": order, "ranges": ranges}
+        return result
 
 
 # ========== 3. 主入口 ==========
 def main():
     # ====== 临时代码：写死参数，便于调试 ======
     class Args:
-        # strategy = "system.小市值策略"
+        strategy = "system.小市值策略"
         # strategy = "system.双均线策略"
-        strategy = "system.MACD策略"
+        # strategy = "system.MACD策略"
         start = "2025-08-01"
         end = "2025-08-31"
         config = "config.json"
@@ -601,19 +657,13 @@ def main():
     preparer = DataPreparer(args.config)
     preparer.output_path = output_csv_prefix  # 用于csv/parquet等文件前缀
     result = preparer.prepare_data(args.strategy, args.start, args.end)
-    # 保存流程和参数信息到json，修正tuple为str
+
+    # 转换所有Decimal类型为float，便于JSON序列化
+    result_converted = convert_decimal_to_float(result)
+
+    # 保存回测所需信息到json
     with open(output_json, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "stock_list": result["stock_list"],
-                "dag_info": dag_info_to_jsonable(result["dag_info"]),
-                "param_data_path": result["param_data_path"],
-                "param_columns": result["param_columns"],
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
+        json.dump(result_converted, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

@@ -46,6 +46,11 @@ const routes = [
         path: 'params',
         name: 'ParamManagement',
         component: () => import('../views/ParamList.vue')
+      },
+      {
+        path: 'backtest',
+        name: 'HistoricalBacktestList',
+        component: () => import('../views/HistoricalBacktestList.vue')
       }
     ]
   }
