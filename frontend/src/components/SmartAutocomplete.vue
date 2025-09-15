@@ -89,6 +89,23 @@ export default {
       emit("update:modelValue", newValue);
     });
 
+    // 监听nodeType变化，重新获取建议
+    watch(
+      () => props.nodeType,
+      (newNodeType, oldNodeType) => {
+        if (newNodeType !== oldNodeType) {
+          // 清空当前建议列表
+          suggestions.value = [];
+          selectedIndex.value = -1;
+
+          // 如果输入框有焦点或有内容，重新获取建议
+          if (showSuggestions.value || inputValue.value) {
+            fetchSuggestions(inputValue.value);
+          }
+        }
+      }
+    );
+
     // 处理输入事件
     const handleInput = (value) => {
       inputValue.value = value;
@@ -109,11 +126,8 @@ export default {
 
     // 处理焦点事件
     const handleFocus = () => {
-      if (inputValue.value || suggestions.value.length > 0) {
-        showSuggestions.value = true;
-      } else {
-        fetchSuggestions("");
-      }
+      // 总是重新获取建议，确保 nodeType 变化后能正确更新
+      fetchSuggestions(inputValue.value || "");
     };
 
     // 处理失焦事件
