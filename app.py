@@ -1157,6 +1157,7 @@ def get_strategies(current_user):
             # 构建基础查询SQL
             base_sql = """
             SELECT s.creator_name, s.strategy_name, s.public, s.scope_type, s.scope_id,
+                   s.benchmark_index,
                    s.select_func, s.risk_control_func, s.position_count, s.rebalance_interval,
                    s.buy_fee_rate, s.sell_fee_rate, s.strategy_desc, 
                    s.create_time, s.update_time
@@ -1266,6 +1267,11 @@ def create_strategy(current_user):
             str(data.get("scope_id", "")).strip() if data.get("scope_id") else None
         )
         select_func = str(data["select_func"]).strip()
+        benchmark_index = (
+            str(data.get("benchmark_index", "")).strip()
+            if data.get("benchmark_index")
+            else None
+        )
         risk_control_func = (
             str(data.get("risk_control_func", "")).strip()
             if data.get("risk_control_func")
@@ -1299,6 +1305,10 @@ def create_strategy(current_user):
             if not rebalance_interval or rebalance_interval <= 0:
                 return jsonify({"code": 400, "message": "调仓间隔必须大于0"})
 
+        # 验证 benchmark_index 长度（可选）
+        if benchmark_index and len(benchmark_index) > 20:
+            return jsonify({"code": 400, "message": "基准指数代码长度不能超过20"})
+
         # 验证策略名格式（仅允许中文、英文、数字、下划线）
         if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9_]+$", strategy_name):
             return jsonify(
@@ -1318,10 +1328,10 @@ def create_strategy(current_user):
             # 插入策略记录
             insert_sql = """
             INSERT INTO Strategy 
-            (creator_name, strategy_name, public, scope_type, scope_id, select_func, 
+            (creator_name, strategy_name, public, scope_type, scope_id, benchmark_index, select_func, 
              risk_control_func, position_count, rebalance_interval, buy_fee_rate, 
              sell_fee_rate, strategy_desc, create_time, update_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             """
 
             cursor.execute(
@@ -1332,6 +1342,7 @@ def create_strategy(current_user):
                     public,
                     scope_type,
                     scope_id,
+                    benchmark_index,
                     select_func,
                     risk_control_func,
                     position_count,
@@ -1376,6 +1387,7 @@ def get_strategy_detail(current_user, creator_name, strategy_name):
             # 查询策略详情
             select_sql = """
             SELECT s.creator_name, s.strategy_name, s.public, s.scope_type, s.scope_id,
+                   s.benchmark_index,
                    s.select_func, s.risk_control_func, s.position_count, s.rebalance_interval,
                    s.buy_fee_rate, s.sell_fee_rate, s.strategy_desc, 
                    s.create_time, s.update_time
@@ -1443,6 +1455,11 @@ def update_strategy(current_user, creator_name, strategy_name):
             str(data.get("scope_id", "")).strip() if data.get("scope_id") else None
         )
         select_func = str(data["select_func"]).strip()
+        benchmark_index = (
+            str(data.get("benchmark_index", "")).strip()
+            if data.get("benchmark_index")
+            else None
+        )
         risk_control_func = (
             str(data.get("risk_control_func", "")).strip()
             if data.get("risk_control_func")
@@ -1482,6 +1499,10 @@ def update_strategy(current_user, creator_name, strategy_name):
                 {"code": 400, "message": "策略名称只能包含中文、英文、数字和下划线"}
             )
 
+        # 验证 benchmark_index 长度（可选）
+        if benchmark_index and len(benchmark_index) > 20:
+            return jsonify({"code": 400, "message": "基准指数代码长度不能超过20"})
+
         connection = get_db_connection()
         try:
             cursor = connection.cursor()
@@ -1503,6 +1524,7 @@ def update_strategy(current_user, creator_name, strategy_name):
             update_sql = """
             UPDATE Strategy 
             SET strategy_name = %s, public = %s, scope_type = %s, scope_id = %s, 
+                benchmark_index = %s,
                 select_func = %s, risk_control_func = %s, position_count = %s, 
                 rebalance_interval = %s, buy_fee_rate = %s, sell_fee_rate = %s, 
                 strategy_desc = %s, update_time = NOW()
@@ -1516,6 +1538,7 @@ def update_strategy(current_user, creator_name, strategy_name):
                     public,
                     scope_type,
                     scope_id,
+                    benchmark_index,
                     select_func,
                     risk_control_func,
                     position_count,
@@ -1571,6 +1594,7 @@ def update_strategy(current_user, creator_name, strategy_name):
                     "data": {
                         "creator_name": creator_name,
                         "strategy_name": new_strategy_name,
+                        "benchmark_index": benchmark_index,
                     },
                 }
             )
