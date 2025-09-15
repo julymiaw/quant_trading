@@ -32,7 +32,7 @@
           <el-form-item label="用户名" prop="userName">
             <el-input
               v-model="registerForm.userName"
-              placeholder="请输入用户名（仅允许英文、数字、下划线）"
+              placeholder="仅允许英文、数字、下划线"
               prefix-icon="User" />
           </el-form-item>
 
@@ -94,7 +94,6 @@
 <script>
 import { ref, reactive } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
 import axios from "axios";
 import FormAlert from "../components/FormAlert.vue";
 import { useFormState } from "../composables/useFormState.js";
@@ -115,7 +114,6 @@ export default {
       setLoading,
       hideAlert,
       showWarning,
-      showError,
       showSuccess,
       handleApiError,
       handleValidationError,

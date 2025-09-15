@@ -14,11 +14,11 @@
           <img src="/logo_seuquant.png" alt="Logo" class="form-logo" />
         </div>
 
-        <!-- 手机号输入框 -->
+        <!-- 用户名输入框 -->
         <div class="form-item">
           <el-input
             v-model="loginForm.userName"
-            placeholder="手机号"
+            placeholder="用户名"
             prefix-icon="User"
             :style="inputStyle"
             autoComplete="off" />
