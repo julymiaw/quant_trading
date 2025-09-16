@@ -909,28 +909,65 @@ def handle_table_suggestions(input_text: str) -> list:
     """
     处理数据表类型的建议
     逻辑：
-    1. 如果没有点号，搜索表名（daily, daily_basic）
+    1. 如果没有点号，搜索表名
     2. 如果有点号，点号前是表名，点号后搜索字段
     """
+    # 只允许选择 daily/daily_basic 且排除 ts_code 和 trade_date 字段
+    allowed_tables = ["daily", "daily_basic"]
+    exclude_fields = ["ts_code", "trade_date"]
     if "." not in input_text:
-        # 搜索表名
-        tables = ["daily", "daily_basic"]
+        # 只返回允许的表
         if not input_text:
-            return tables
-        return [table for table in tables if table.startswith(input_text.lower())]
+            return allowed_tables
+        return [
+            table for table in allowed_tables if table.startswith(input_text.lower())
+        ]
     else:
-        # 搜索字段
         table_name, field_query = input_text.split(".", 1)
-        if table_name in ["daily", "daily_basic"]:
-            fields = get_table_fields(table_name)
-            if not field_query:
-                return [f"{table_name}.{field}" for field in fields]
-            matching_fields = [
-                field
-                for field in fields
-                if field.lower().startswith(field_query.lower())
+        if table_name in allowed_tables:
+            fields_info = get_table_fields(table_name)
+            # 过滤掉 ts_code 和 trade_date 字段
+            filtered_fields = [
+                f for f in fields_info if f["name"] not in exclude_fields
             ]
-            return [f"{table_name}.{field}" for field in matching_fields]
+            if not field_query:
+                result = []
+                for field_info in filtered_fields:
+                    field_name = field_info["name"]
+                    field_comment = field_info["comment"]
+                    if field_comment:
+                        result.append(
+                            {
+                                "value": f"{table_name}.{field_name}",
+                                "label": f"{field_name} - {field_comment}",
+                            }
+                        )
+                    else:
+                        result.append(
+                            {"value": f"{table_name}.{field_name}", "label": field_name}
+                        )
+                return result
+            else:
+                matching_fields = []
+                for field_info in filtered_fields:
+                    field_name = field_info["name"]
+                    field_comment = field_info["comment"]
+                    if field_name.lower().startswith(field_query.lower()):
+                        if field_comment:
+                            matching_fields.append(
+                                {
+                                    "value": f"{table_name}.{field_name}",
+                                    "label": f"{field_name} - {field_comment}",
+                                }
+                            )
+                        else:
+                            matching_fields.append(
+                                {
+                                    "value": f"{table_name}.{field_name}",
+                                    "label": field_name,
+                                }
+                            )
+                return matching_fields
         else:
             return []
 
@@ -1010,10 +1047,16 @@ def handle_market_entity_suggestions(node_type: str, input_text: str) -> list:
 
 
 def get_table_fields(table_name: str) -> list:
-    """获取指定表的所有字段名"""
+    """获取指定表的所有字段名和注释信息"""
     try:
         # 根据表名判断使用哪个数据库
-        if table_name in ["daily", "daily_basic"]:
+        if table_name in [
+            "daily",
+            "daily_basic",
+            "stock_basic",
+            "index_basic",
+            "index_daily",
+        ]:
             # 这些表在tushare_cache数据库中
             connection = pymysql.connect(
                 host="localhost",
@@ -1024,17 +1067,38 @@ def get_table_fields(table_name: str) -> list:
                 charset="utf8mb4",
                 cursorclass=pymysql.cursors.DictCursor,
             )
+            database_name = "tushare_cache"
         else:
             # 其他表在quantitative_trading数据库中
             connection = get_db_connection()
+            database_name = "quantitative_trading"
+
         if connection is None:
             return []
 
         cursor = connection.cursor()
 
-        # 查询表的字段信息
-        cursor.execute(f"DESCRIBE {table_name}")
-        fields = [row["Field"] for row in cursor.fetchall()]
+        # 查询表的字段信息和注释
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME, COLUMN_COMMENT 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+            ORDER BY ORDINAL_POSITION
+        """,
+            (database_name, table_name),
+        )
+
+        fields = []
+        for row in cursor.fetchall():
+            field_name = row["COLUMN_NAME"]
+            field_comment = row["COLUMN_COMMENT"]
+            if field_comment:
+                # 返回格式: {"name": "字段名", "comment": "注释"}
+                fields.append({"name": field_name, "comment": field_comment})
+            else:
+                fields.append({"name": field_name, "comment": ""})
+
         cursor.close()
         return fields
     except Exception as e:

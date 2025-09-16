@@ -17,23 +17,23 @@ CREATE TABLE trade_cal (
 
 -- 股票基础信息表
 CREATE TABLE stock_basic (
-    ts_code VARCHAR(20) NOT NULL,     -- TS股票代码
-    symbol VARCHAR(20),               -- 股票代码
-    `name` VARCHAR(200),              -- 股票名称
-    area VARCHAR(100),                -- 所在地域
-    industry VARCHAR(100),            -- 所属行业
-    fullname VARCHAR(300),            -- 股票全称
-    enname VARCHAR(300),              -- 英文全称
-    cnspell VARCHAR(100),             -- 拼音缩写
-    market VARCHAR(50),               -- 市场类型（主板/中小板/创业板/科创板等）
-    `exchange` VARCHAR(20),           -- 交易所代码
-    curr_type VARCHAR(20),            -- 交易货币
-    list_status VARCHAR(10),          -- 上市状态 L上市 D退市 P暂停上市
-    list_date VARCHAR(8),             -- 上市日期 YYYYMMDD
-    delist_date VARCHAR(8),           -- 退市日期 YYYYMMDD
-    is_hs VARCHAR(10),                -- 是否沪深港通标的 H沪股通 S深股通 N否
-    act_name VARCHAR(200),            -- 实际控制人名称
-    act_ent_type VARCHAR(200),        -- 实际控制人类型
+    ts_code VARCHAR(20) NOT NULL COMMENT 'Tushare股票代码',
+    symbol VARCHAR(20) COMMENT '股票代码(不含后缀)',
+    `name` VARCHAR(200) COMMENT '股票名称',
+    area VARCHAR(100) COMMENT '所在地域',
+    industry VARCHAR(100) COMMENT '所属行业',
+    fullname VARCHAR(300) COMMENT '股票全称',
+    enname VARCHAR(300) COMMENT '英文全称',
+    cnspell VARCHAR(100) COMMENT '拼音缩写',
+    market VARCHAR(50) COMMENT '市场类型(主板/创业板/科创板等)',
+    `exchange` VARCHAR(20) COMMENT '交易所代码',
+    curr_type VARCHAR(20) COMMENT '交易货币',
+    list_status VARCHAR(10) COMMENT '上市状态(L上市/D退市/P暂停)',
+    list_date VARCHAR(8) COMMENT '上市日期(YYYYMMDD)',
+    delist_date VARCHAR(8) COMMENT '退市日期(YYYYMMDD)',
+    is_hs VARCHAR(10) COMMENT '沪深港通标的(H沪股通/S深股通/N否)',
+    act_name VARCHAR(200) COMMENT '实际控制人名称',
+    act_ent_type VARCHAR(200) COMMENT '实际控制人类型',
     PRIMARY KEY (ts_code),
     INDEX idx_symbol (symbol),
     INDEX idx_list_status (list_status),
@@ -43,17 +43,17 @@ CREATE TABLE stock_basic (
 
 -- 日线行情表
 CREATE TABLE daily (
-    ts_code VARCHAR(20) NOT NULL,     -- 股票代码
-    trade_date VARCHAR(8) NOT NULL,   -- 交易日期 YYYYMMDD
-    `open` DOUBLE,                    -- 开盘价
-    high DOUBLE,                      -- 最高价
-    low DOUBLE,                       -- 最低价
-    `close` DOUBLE,                   -- 收盘价
-    pre_close DOUBLE,                 -- 昨收价【除权价，前复权】
-    `change` DOUBLE,                  -- 涨跌额
-    pct_chg DOUBLE,                   -- 涨跌幅【基于除权后的昨收计算的涨跌幅：（今收-除权昨收）/除权昨收】
-    vol DOUBLE,                       -- 成交量（手）
-    amount DOUBLE,                    -- 成交额（千元）
+    ts_code VARCHAR(20) NOT NULL COMMENT '股票代码',
+    trade_date VARCHAR(8) NOT NULL COMMENT '交易日期(YYYYMMDD格式)',
+    `open` DOUBLE COMMENT '开盘价(元)',
+    high DOUBLE COMMENT '最高价(元)',
+    low DOUBLE COMMENT '最低价(元)',
+    `close` DOUBLE COMMENT '收盘价(元)',
+    pre_close DOUBLE COMMENT '昨收价(元,除权价)',
+    `change` DOUBLE COMMENT '涨跌额(元)',
+    pct_chg DOUBLE COMMENT '涨跌幅(%)',
+    vol DOUBLE COMMENT '成交量(手)',
+    amount DOUBLE COMMENT '成交额(千元)',
     PRIMARY KEY (ts_code, trade_date),
     INDEX idx_trade_date (trade_date),
     INDEX idx_ts_code (ts_code)
@@ -61,24 +61,24 @@ CREATE TABLE daily (
 
 -- 每日指标表
 CREATE TABLE daily_basic (
-    ts_code VARCHAR(20) NOT NULL,     -- TS股票代码
-    trade_date VARCHAR(8) NOT NULL,   -- 交易日期 YYYYMMDD
-    `close` DOUBLE,                   -- 当日收盘价
-    turnover_rate DOUBLE,             -- 换手率（%）
-    turnover_rate_f DOUBLE,           -- 换手率（自由流通股）
-    volume_ratio DOUBLE,              -- 量比
-    pe DOUBLE,                        -- 市盈率（总市值/净利润，亏损的PE为空）
-    pe_ttm DOUBLE,                    -- 市盈率（TTM，亏损的PE为空）
-    pb DOUBLE,                        -- 市净率（总市值/净资产）
-    ps DOUBLE,                        -- 市销率
-    ps_ttm DOUBLE,                    -- 市销率（TTM）
-    dv_ratio DOUBLE,                  -- 股息率（%）
-    dv_ttm DOUBLE,                    -- 股息率（TTM）（%）
-    total_share DOUBLE,               -- 总股本（万股）
-    float_share DOUBLE,               -- 流通股本（万股）
-    free_share DOUBLE,                -- 自由流通股本（万）
-    total_mv DOUBLE,                  -- 总市值（万元）
-    circ_mv DOUBLE,                   -- 流通市值（万元）
+    ts_code VARCHAR(20) NOT NULL COMMENT '股票代码',
+    trade_date VARCHAR(8) NOT NULL COMMENT '交易日期(YYYYMMDD格式)',
+    `close` DOUBLE COMMENT '当日收盘价(元)',
+    turnover_rate DOUBLE COMMENT '换手率(%)',
+    turnover_rate_f DOUBLE COMMENT '换手率-自由流通股(%)',
+    volume_ratio DOUBLE COMMENT '量比',
+    pe DOUBLE COMMENT '市盈率(总市值/净利润)',
+    pe_ttm DOUBLE COMMENT '市盈率TTM(滚动12个月)',
+    pb DOUBLE COMMENT '市净率(总市值/净资产)',
+    ps DOUBLE COMMENT '市销率',
+    ps_ttm DOUBLE COMMENT '市销率TTM(滚动12个月)',
+    dv_ratio DOUBLE COMMENT '股息率(%)',
+    dv_ttm DOUBLE COMMENT '股息率TTM(%)',
+    total_share DOUBLE COMMENT '总股本(万股)',
+    float_share DOUBLE COMMENT '流通股本(万股)',
+    free_share DOUBLE COMMENT '自由流通股本(万股)',
+    total_mv DOUBLE COMMENT '总市值(万元)',
+    circ_mv DOUBLE COMMENT '流通市值(万元)',
     PRIMARY KEY (ts_code, trade_date),
     INDEX idx_trade_date (trade_date),
     INDEX idx_ts_code (ts_code)
@@ -86,19 +86,19 @@ CREATE TABLE daily_basic (
 
 -- 指数基本信息表
 CREATE TABLE index_basic (
-    ts_code VARCHAR(20) NOT NULL,      -- TS代码
-    name VARCHAR(100),                 -- 简称
-    fullname VARCHAR(200),             -- 指数全称
-    market VARCHAR(20),                -- 市场
-    publisher VARCHAR(100),            -- 发布方
-    index_type VARCHAR(50),            -- 指数风格
-    category VARCHAR(50),              -- 指数类别
-    base_date VARCHAR(8),              -- 基期
-    base_point DOUBLE,                 -- 基点
-    list_date VARCHAR(8),              -- 发布日期
-    weight_rule VARCHAR(100),          -- 加权方式
-    `desc` TEXT,                       -- 描述
-    exp_date VARCHAR(8),               -- 终止日期
+    ts_code VARCHAR(20) NOT NULL COMMENT 'Tushare指数代码',
+    name VARCHAR(100) COMMENT '指数简称',
+    fullname VARCHAR(200) COMMENT '指数全称',
+    market VARCHAR(20) COMMENT '市场',
+    publisher VARCHAR(100) COMMENT '发布方',
+    index_type VARCHAR(50) COMMENT '指数风格',
+    category VARCHAR(50) COMMENT '指数类别',
+    base_date VARCHAR(8) COMMENT '基期日期',
+    base_point DOUBLE COMMENT '基点',
+    list_date VARCHAR(8) COMMENT '发布日期',
+    weight_rule VARCHAR(100) COMMENT '加权方式',
+    `desc` TEXT COMMENT '指数描述',
+    exp_date VARCHAR(8) COMMENT '终止日期',
 
     PRIMARY KEY (ts_code),
     INDEX idx_market (market),
@@ -107,17 +107,17 @@ CREATE TABLE index_basic (
 
 -- 指数日线行情表
 CREATE TABLE index_daily (
-    ts_code VARCHAR(20) NOT NULL,      -- TS指数代码
-    trade_date VARCHAR(8) NOT NULL,    -- 交易日
-    `close` DOUBLE,                    -- 收盘点位
-    `open` DOUBLE,                     -- 开盘点位
-    high DOUBLE,                       -- 最高点位
-    low DOUBLE,                        -- 最低点位
-    pre_close DOUBLE,                  -- 昨日收盘点
-    `change` DOUBLE,                   -- 涨跌点
-    pct_chg DOUBLE,                    -- 涨跌幅（%）
-    vol DOUBLE,                        -- 成交量（手）
-    amount DOUBLE,                     -- 成交额（千元）
+    ts_code VARCHAR(20) NOT NULL COMMENT 'Tushare指数代码',
+    trade_date VARCHAR(8) NOT NULL COMMENT '交易日期(YYYYMMDD)',
+    `close` DOUBLE COMMENT '收盘点位',
+    `open` DOUBLE COMMENT '开盘点位',
+    high DOUBLE COMMENT '最高点位',
+    low DOUBLE COMMENT '最低点位',
+    pre_close DOUBLE COMMENT '昨日收盘点位',
+    `change` DOUBLE COMMENT '涨跌点数',
+    pct_chg DOUBLE COMMENT '涨跌幅(%)',
+    vol DOUBLE COMMENT '成交量(手)',
+    amount DOUBLE COMMENT '成交额(千元)',
 
     PRIMARY KEY (ts_code, trade_date),
     INDEX idx_trade_date (trade_date),
