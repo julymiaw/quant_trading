@@ -22,6 +22,9 @@
         <template v-if="typeof suggestion === 'string'">
           {{ suggestion }}
         </template>
+        <template v-else-if="suggestion.value && suggestion.label">
+          <span>{{ suggestion.label }}</span>
+        </template>
         <template v-else>
           <span style="font-weight: 500">{{ suggestion.code }}</span>
           <span style="color: #999; margin-left: 8px">{{
@@ -172,6 +175,13 @@ export default {
           const raw = response.data.suggestions || [];
           suggestions.value = raw.map((it) => {
             if (typeof it === "string") return it;
+            // 支持数据表字段的 {value, label} 格式
+            if (it && it.value && it.label) {
+              return {
+                value: it.value,
+                label: it.label,
+              };
+            }
             // 支持后端返回 {code, name} 或 {ts_code, name}
             if (it && (it.code || it.ts_code)) {
               return {
@@ -197,9 +207,18 @@ export default {
 
     // 选择建议
     const selectSuggestion = (suggestion, index) => {
-      // 直接设置输入框的值
-      const valueToSet =
-        typeof suggestion === "string" ? suggestion : suggestion.code;
+      // 根据建议类型设置不同的值
+      let valueToSet;
+      if (typeof suggestion === "string") {
+        valueToSet = suggestion;
+      } else if (suggestion.value) {
+        // 数据表字段格式: {value: "table.field", label: "field - comment"}
+        valueToSet = suggestion.value;
+      } else {
+        // 股票/指数格式: {code: "000001.SZ", name: "平安银行"}
+        valueToSet = suggestion.code;
+      }
+
       inputValue.value = valueToSet;
       selectedIndex.value = index;
       showSuggestions.value = false;
