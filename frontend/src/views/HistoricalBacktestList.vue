@@ -160,7 +160,7 @@
                 <span
                   :class="[
                     'stat-value',
-                    selectedBacktest?.total_return >= 0
+                    (selectedBacktest?.total_return || 0) >= 0
                       ? 'positive'
                       : 'negative',
                   ]">
@@ -176,7 +176,7 @@
                 <span
                   :class="[
                     'stat-value',
-                    selectedBacktest?.annual_return >= 0
+                    (selectedBacktest?.annual_return || 0) >= 0
                       ? 'positive'
                       : 'negative',
                   ]">
@@ -212,7 +212,9 @@
                 <span
                   :class="[
                     'stat-value',
-                    selectedBacktest?.win_rate >= 0.5 ? 'positive' : 'negative',
+                    (selectedBacktest?.win_rate || 0) >= 0.5
+                      ? 'positive'
+                      : 'negative',
                   ]">
                   {{
                     selectedBacktest?.win_rate
@@ -354,7 +356,9 @@ export default {
         });
 
         if (response.data.code === 200) {
-          backtests.value = response.data.data.list || [];
+          backtests.value = (response.data.data.list || []).map(
+            processBacktestData
+          );
           total.value = response.data.data.total || 0;
         } else {
           backtests.value = [];
@@ -382,6 +386,33 @@ export default {
       );
     };
 
+    // 处理回测数据的数值字段类型转换
+    const processBacktestData = (data) => {
+      if (!data) return data;
+
+      // 确保数值字段是数字类型
+      const numericFields = [
+        "total_return",
+        "annual_return",
+        "max_drawdown",
+        "sharpe_ratio",
+        "win_rate",
+        "profit_loss_ratio",
+        "initial_fund",
+        "final_fund",
+        "trade_count",
+      ];
+
+      const processed = { ...data };
+      numericFields.forEach((field) => {
+        if (processed[field] !== null && processed[field] !== undefined) {
+          processed[field] = Number(processed[field]);
+        }
+      });
+
+      return processed;
+    };
+
     // 从API获取回测报告详情
     const fetchBacktestReport = async (reportId) => {
       try {
@@ -398,7 +429,7 @@ export default {
         });
 
         if (response.data.success) {
-          return response.data.data;
+          return processBacktestData(response.data.data);
         } else {
           ElMessage.error("获取回测报告失败");
           return null;
@@ -446,7 +477,7 @@ export default {
         }
       } else {
         // 如果传入的是完整的backtest对象
-        selectedBacktest.value = backtest;
+        selectedBacktest.value = processBacktestData(backtest);
         reportDialogVisible.value = true;
       }
 
