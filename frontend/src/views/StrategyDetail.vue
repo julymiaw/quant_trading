@@ -477,26 +477,12 @@
               placeholder="选择结束日期"
               style="width: 100%" />
           </el-form-item>
-          <el-form-item label="初始资金(元)" prop="initial_cash">
+          <el-form-item label="初始资金(元)" prop="initial_fund">
             <el-input-number
-              v-model="backtestForm.initial_cash"
+              v-model="backtestForm.initial_fund"
               :min="1000"
               :max="10000000"
               :step="1000" />
-          </el-form-item>
-          <el-form-item label="佣金费率" prop="commission_rate">
-            <el-input-number
-              v-model="backtestForm.commission_rate"
-              :min="0"
-              :max="0.1"
-              :step="0.0001" />
-          </el-form-item>
-          <el-form-item label="滑点率" prop="slippage_rate">
-            <el-input-number
-              v-model="backtestForm.slippage_rate"
-              :min="0"
-              :max="0.1"
-              :step="0.0001" />
           </el-form-item>
         </el-form>
         <template #footer>
@@ -1070,9 +1056,7 @@ export default {
       Object.assign(backtestForm, {
         start_date: threeMonthsAgo,
         end_date: today,
-        initial_cash: 100000,
-        commission_rate: 0.0003,
-        slippage_rate: 0.0001,
+        initial_fund: 100000,
       });
 
       backtestDialogVisible.value = true;
@@ -1093,16 +1077,13 @@ export default {
           return;
         }
 
-        // 构建回测请求参数
+        // 构建回测请求参数 - 只传递后端需要的基本信息
         const backtestData = {
-          strategy_creator: strategy.value.creator_name,
-          strategy_name: strategy.value.strategy_name,
+          strategy_creator: strategy.creator_name,
+          strategy_name: strategy.strategy_name,
           start_date: backtestForm.start_date.toISOString().split("T")[0],
           end_date: backtestForm.end_date.toISOString().split("T")[0],
-          initial_capital: backtestForm.initial_cash || 100000,
-          commission_rate: backtestForm.commission_rate || 0.0003,
-          slippage_rate: backtestForm.slippage_rate || 0.0001,
-          stock_code: "000001.SZ", // 默认使用深证成指
+          initial_fund: backtestForm.initial_fund || 100000,
         };
 
         // 调用真实的回测API
@@ -1277,9 +1258,7 @@ export default {
     const backtestForm = reactive({
       start_date: "",
       end_date: "",
-      initial_cash: 0,
-      commission_rate: 0,
-      slippage_rate: 0,
+      initial_fund: 0,
     });
 
     const backtestRules = {
@@ -1303,32 +1282,12 @@ export default {
           trigger: "change",
         },
       ],
-      initial_cash: [
+      initial_fund: [
         { required: true, message: "请输入初始资金", trigger: "change" },
         {
           type: "number",
           min: 1000,
           message: "初始资金不能小于1000元",
-          trigger: "change",
-        },
-      ],
-      commission_rate: [
-        { required: true, message: "请输入佣金费率", trigger: "change" },
-        {
-          type: "number",
-          min: 0,
-          max: 0.1,
-          message: "佣金费率应在0到0.1之间",
-          trigger: "change",
-        },
-      ],
-      slippage_rate: [
-        { required: true, message: "请输入滑点率", trigger: "change" },
-        {
-          type: "number",
-          min: 0,
-          max: 0.1,
-          message: "滑点率应在0到0.1之间",
           trigger: "change",
         },
       ],
@@ -1619,8 +1578,5 @@ export default {
   color: rgba(0, 0, 0, 0.75);
 }
 
-/* 移除原来的独立按钮样式 */
-.collapse-btn {
-  /* 删除这个类的样式，因为不再需要单独的按钮 */
-}
+/* 移除原来的独立按钮样式 - collapse-btn类已不再使用 */
 </style>

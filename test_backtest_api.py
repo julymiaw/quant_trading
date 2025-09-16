@@ -12,7 +12,7 @@ BASE_URL = "http://localhost:5000"
 
 def test_login():
     """测试登录功能"""
-    login_data = {"userName": "test_user", "password": "test_password"}
+    login_data = {"userName": "system", "password": "Admin@2025!SeQuan"}  # 使用系统用户
 
     response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
     if response.status_code == 200:
@@ -29,19 +29,19 @@ def test_login():
 
 
 def test_start_backtest(token):
-    """测试启动回测功能"""
+    """测试启动回测功能 - 使用简化的API参数"""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+    # 只传递后端真正需要的参数：策略创建者、策略名、时间范围、初始资金
     backtest_data = {
         "strategy_creator": "system",
-        "strategy_name": "MACD策略",
-        "start_date": "2023-01-01",
-        "end_date": "2023-12-31",
-        "initial_capital": 100000,
-        "commission_rate": 0.0003,
-        "slippage_rate": 0.0001,
-        "stock_code": "000001.SZ",
+        "strategy_name": "小市值策略",
+        "start_date": "2024-01-01",
+        "end_date": "2024-03-31",
+        "initial_fund": 100000,
     }
+
+    print(f"  发送回测数据: {json.dumps(backtest_data, indent=2, ensure_ascii=False)}")
 
     response = requests.post(
         f"{BASE_URL}/api/backtest/start", json=backtest_data, headers=headers

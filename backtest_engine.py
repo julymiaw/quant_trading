@@ -210,15 +210,15 @@ class BacktestEngine:
     支持生成HTML格式的交互式图表
     """
 
-    def __init__(self, initial_cash: float = 100000.0, commission: float = 0.001):
+    def __init__(self, initial_fund: float = 100000.0, commission: float = 0.001):
         """
         初始化回测引擎
 
         Args:
-            initial_cash: 初始资金
+            initial_fund: 初始资金
             commission: 手续费率
         """
-        self.initial_cash = initial_cash
+        self.initial_fund = initial_fund
         self.commission = commission
         self.results = None
         self.cerebro = None
@@ -418,7 +418,7 @@ class BacktestEngine:
         )
 
         # 设置初始资金和手续费
-        self.cerebro.broker.setcash(self.initial_cash)
+        self.cerebro.broker.setcash(self.initial_fund)
         self.cerebro.broker.setcommission(commission=self.commission)
 
         # 添加分析器
@@ -441,9 +441,9 @@ class BacktestEngine:
         analysis_results = self._extract_analysis_results(strategy)
 
         return {
-            "initial_value": self.initial_cash,
+            "initial_value": self.initial_fund,
             "final_value": final_value,
-            "total_return": (final_value - self.initial_cash) / self.initial_cash,
+            "total_return": (final_value - self.initial_fund) / self.initial_fund,
             "strategy_pnl": strategy.pnl,
             "analysis": analysis_results,
             "strategy_info": config.get("strategy_info", {}),
@@ -559,7 +559,7 @@ class BacktestEngine:
 
             # 计算收益率曲线
             initial_value = (
-                portfolio_values[0] if portfolio_values else self.initial_cash
+                portfolio_values[0] if portfolio_values else self.initial_fund
             )
             returns = [(value / initial_value - 1) * 100 for value in portfolio_values]
 
@@ -568,18 +568,18 @@ class BacktestEngine:
             # 备用方案：基于最终收益创建简化曲线
             strategy = self.results[0]
             final_value = strategy.broker.getvalue()
-            total_return = (final_value - self.initial_cash) / self.initial_cash
+            total_return = (final_value - self.initial_fund) / self.initial_fund
 
             # 创建简化的线性增长曲线
             n_points = 50
             dates = pd.date_range(start="2024-01-01", periods=n_points, freq="D")
             portfolio_values = [
-                self.initial_cash
-                + (final_value - self.initial_cash) * i / (n_points - 1)
+                self.initial_fund
+                + (final_value - self.initial_fund) * i / (n_points - 1)
                 for i in range(n_points)
             ]
             returns = [
-                (value / self.initial_cash - 1) * 100 for value in portfolio_values
+                (value / self.initial_fund - 1) * 100 for value in portfolio_values
             ]
 
         fig = go.Figure()
@@ -651,7 +651,7 @@ class BacktestEngine:
 
             # 计算收益率曲线
             initial_value = (
-                portfolio_values[0] if portfolio_values else self.initial_cash
+                portfolio_values[0] if portfolio_values else self.initial_fund
             )
             returns = [(value / initial_value - 1) * 100 for value in portfolio_values]
 
@@ -665,12 +665,12 @@ class BacktestEngine:
             n_points = 50
             dates = pd.date_range(start="2024-01-01", periods=n_points, freq="D")
             portfolio_values = [
-                self.initial_cash
-                + (final_value - self.initial_cash) * i / (n_points - 1)
+                self.initial_fund
+                + (final_value - self.initial_fund) * i / (n_points - 1)
                 for i in range(n_points)
             ]
             returns = [
-                (value / self.initial_cash - 1) * 100 for value in portfolio_values
+                (value / self.initial_fund - 1) * 100 for value in portfolio_values
             ]
 
         fig = go.Figure()
@@ -722,7 +722,7 @@ class BacktestEngine:
 def run_backtest_from_files(
     csv_path: str,
     json_path: str,
-    initial_cash: float = 100000.0,
+    initial_fund: float = 100000.0,
     commission: float = 0.001,
     print_log: bool = False,
 ) -> Tuple[Dict[str, Any], BacktestEngine]:
@@ -732,14 +732,14 @@ def run_backtest_from_files(
     Args:
         csv_path: CSV数据文件路径
         json_path: JSON配置文件路径
-        initial_cash: 初始资金
+        initial_fund: 初始资金
         commission: 手续费率
         print_log: 是否打印日志
 
     Returns:
         (回测结果字典, 回测引擎实例)
     """
-    engine = BacktestEngine(initial_cash=initial_cash, commission=commission)
+    engine = BacktestEngine(initial_fund=initial_fund, commission=commission)
     config = engine.load_data_from_file(csv_path, json_path)
     results = engine.run_backtest(config, print_log=print_log)
     return results, engine
@@ -747,7 +747,7 @@ def run_backtest_from_files(
 
 def run_backtest_from_data(
     data_dict: Dict[str, Any],
-    initial_cash: float = 100000.0,
+    initial_fund: float = 100000.0,
     commission: float = 0.001,
     print_log: bool = False,
 ) -> Tuple[Dict[str, Any], BacktestEngine]:
@@ -756,14 +756,14 @@ def run_backtest_from_data(
 
     Args:
         data_dict: 数据字典（来自数据准备模块）
-        initial_cash: 初始资金
+        initial_fund: 初始资金
         commission: 手续费率
         print_log: 是否打印日志
 
     Returns:
         (回测结果字典, 回测引擎实例)
     """
-    engine = BacktestEngine(initial_cash=initial_cash, commission=commission)
+    engine = BacktestEngine(initial_fund=initial_fund, commission=commission)
     config = engine.load_data_direct(data_dict)
     results = engine.run_backtest(config, print_log=print_log)
     return results, engine
@@ -783,7 +783,7 @@ if __name__ == "__main__":
         results, engine = run_backtest_from_files(
             csv_path=csv_path,
             json_path=json_path,
-            initial_cash=100000.0,
+            initial_fund=100000.0,
             commission=0.001,
             print_log=True,
         )

@@ -134,15 +134,12 @@ CREATE TABLE TradingSignal (
 -- =============================================
 -- 6. 创建回测报告表
 -- =============================================
--- 回测报告表 - 增强版，支持指数回测
+-- 回测报告表
 CREATE TABLE BacktestReport (
     report_id VARCHAR(50) NOT NULL COMMENT '回测报告唯一ID',
     creator_name VARCHAR(50) NOT NULL COMMENT '策略创建者用户名，引用Strategy.creator_name',
     strategy_name VARCHAR(100) NOT NULL COMMENT '策略名称，引用Strategy.strategy_name',
     user_name VARCHAR(50) NOT NULL COMMENT '回测发起用户',
-    backtest_type ENUM('STOCK', 'INDEX') NOT NULL DEFAULT 'STOCK' COMMENT '回测类型',
-    stock_code VARCHAR(20) NOT NULL COMMENT '单股票代码或指数代码',
-    component_count INT DEFAULT NULL COMMENT '指数成分股数量',
     start_date DATE NOT NULL COMMENT '回测起始日期',
     end_date DATE NOT NULL COMMENT '回测结束日期',
     initial_fund DECIMAL(15,2) NOT NULL COMMENT '初始资金',
@@ -154,14 +151,14 @@ CREATE TABLE BacktestReport (
     win_rate DECIMAL(5,4) COMMENT '胜率',
     profit_loss_ratio DECIMAL(8,4) COMMENT '盈亏比',
     trade_count INT NOT NULL COMMENT '交易次数',
+    chart_data LONGTEXT COMMENT 'base64编码的matplotlib图表数据，用于前端显示',
+    plotly_chart_data LONGTEXT COMMENT 'Plotly交互式图表的JSON数据',
     report_generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '报告生成时间',
     report_status ENUM('generating', 'completed', 'failed') NOT NULL DEFAULT 'generating' COMMENT '报告状态',
 
     PRIMARY KEY (report_id),
     INDEX idx_strategy_generate_time (creator_name, strategy_name, report_generate_time),
     INDEX idx_user_name (user_name),
-    INDEX idx_stock_code (stock_code),
-    INDEX idx_backtest_type (backtest_type),
     CONSTRAINT fk_report_strategy FOREIGN KEY (creator_name, strategy_name) REFERENCES Strategy(creator_name, strategy_name),
     CONSTRAINT fk_report_user FOREIGN KEY (user_name) REFERENCES User(user_name),
 
@@ -170,8 +167,7 @@ CREATE TABLE BacktestReport (
     CONSTRAINT chk_drawdown CHECK (max_drawdown >= 0),
     CONSTRAINT chk_win_rate CHECK (win_rate IS NULL OR win_rate BETWEEN 0 AND 1),
     CONSTRAINT chk_ratio CHECK (profit_loss_ratio IS NULL OR profit_loss_ratio >= 0),
-    CONSTRAINT chk_trade_count CHECK (trade_count >= 0),
-    CONSTRAINT chk_component_count CHECK (component_count IS NULL OR component_count > 0)
+    CONSTRAINT chk_trade_count CHECK (trade_count >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='回测报告表';
 
 -- =============================================
@@ -203,7 +199,7 @@ CREATE TABLE Messages (
 
 -- 1. 插入管理员用户
 INSERT INTO User (user_id, user_name, user_password, user_role, user_status, user_create_time)
-VALUES ('1', 'system', '******', 'admin', 'active', '2025-09-01');
+VALUES ('1', 'system', 'Admin@2025!SeQuan', 'admin', 'active', '2025-09-01');
 
 -- 2. 插入参数表数据（所有参数，先插入参数实体）
 INSERT INTO Param (creator_name, param_name, data_id, param_type, pre_period, post_period, agg_func)

@@ -19,6 +19,11 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import jwt
 
+# 导入量化交易系统的数据准备和回测模块
+from prepare_strategy_data import DataPreparer
+from backtest_engine import BacktestEngine
+import pandas as pd
+
 # 配置日志
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -3338,7 +3343,7 @@ def get_messages(current_user):
             # 获取分页数据
             offset = (page - 1) * page_size
             data_sql = f"""
-            SELECT message_id, message_type, title, content, link_url, link_params, 
+            SELECT message_id, user_name, message_type, title, content, link_url, link_params, 
                    status, created_at, read_at
             FROM Messages 
             WHERE {where_clause}
@@ -3348,12 +3353,22 @@ def get_messages(current_user):
             cursor.execute(data_sql, params + [page_size, offset])
             messages = cursor.fetchall()
 
-            # 格式化消息内容（截取前50个字符）
+            # 格式化日期字段和JSON字段
             for message in messages:
-                if len(message["content"]) > 50:
-                    message["content_preview"] = message["content"][:50] + "..."
-                else:
-                    message["content_preview"] = message["content"]
+                if message.get("created_at"):
+                    message["created_at"] = message["created_at"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                if message.get("read_at"):
+                    message["read_at"] = message["read_at"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                # 处理JSON字段
+                if message.get("link_params"):
+                    try:
+                        message["link_params"] = json.loads(message["link_params"])
+                    except (json.JSONDecodeError, TypeError):
+                        message["link_params"] = None
 
             return (
                 jsonify(
@@ -3515,121 +3530,203 @@ def create_message(
 @app.route("/api/backtest/start", methods=["POST"])
 @token_required
 def start_backtest(current_user):
-    """启动回测任务"""
+    """启动真实回测任务，集成数据准备和回测引擎"""
     try:
         data = request.get_json()
         strategy_creator = data.get("strategy_creator")
         strategy_name = data.get("strategy_name")
-        stock_code = data.get("stock_code")
         start_date = data.get("start_date")
         end_date = data.get("end_date")
         initial_fund = data.get("initial_fund", 100000)
 
-        if not all([strategy_creator, strategy_name, stock_code, start_date, end_date]):
+        if not all([strategy_creator, strategy_name, start_date, end_date]):
             return jsonify({"message": "缺少必要参数"}), 400
 
         current_user_name = current_user["user_name"]
+        report_id = str(uuid.uuid4())
 
         # 启动异步回测任务
         import threading
-        import time
-        import uuid
-
-        report_id = str(uuid.uuid4())
 
         def backtest_task():
+            connection = None
             try:
-                # 第一阶段：数据准备（5秒）
-                time.sleep(5)
+                # 初始化回测报告记录
+                connection = get_db_connection()
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO BacktestReport (
+                            report_id, creator_name, strategy_name, user_name,
+                            start_date, end_date, initial_fund, final_fund, 
+                            total_return, annual_return, max_drawdown, sharpe_ratio, 
+                            win_rate, profit_loss_ratio, trade_count, report_status
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0, 0, 0, 0, 0, 'generating')
+                    """,
+                        (
+                            report_id,
+                            strategy_creator,
+                            strategy_name,
+                            current_user_name,
+                            start_date,
+                            end_date,
+                            initial_fund,
+                        ),
+                    )
+                    connection.commit()
+
+                # 第一阶段：数据准备
+                logger.info(f"开始数据准备，策略: {strategy_creator}.{strategy_name}")
+
+                preparer = DataPreparer("config.json")
+                strategy_fullname = f"{strategy_creator}.{strategy_name}"
+
+                # 调用数据准备模块
+                prepared_data = preparer.prepare_data(
+                    strategy_fullname, start_date, end_date
+                )
 
                 # 发送数据准备完成消息
                 create_message(
                     user_name=current_user_name,
                     message_type="backtest_data_ready",
                     title=f"回测数据准备完成 - {strategy_name}",
-                    content=f"策略 '{strategy_name}' 针对股票 {stock_code} 的回测数据准备已完成，正在进行回测计算...",
+                    content=f"策略 '{strategy_name}' 的回测数据准备已完成，正在进行回测计算...",
                 )
 
-                # 第二阶段：回测计算（5秒）
-                time.sleep(5)
+                # 第二阶段：回测执行
+                logger.info(f"开始执行回测，策略: {strategy_creator}.{strategy_name}")
 
-                # 创建虚拟回测报告
-                connection = get_db_connection()
-                if connection:
-                    try:
-                        cursor = connection.cursor()
+                # 从数据准备结果中获取策略手续费信息
+                strategy_info = prepared_data.get("strategy_info", {})
+                commission_rate = strategy_info.get(
+                    "buy_fee_rate", 0.001
+                )  # 使用买入费率作为默认佣金
 
-                        # 生成模拟回测结果
-                        import random
+                backtest_engine = BacktestEngine(
+                    initial_fund=float(initial_fund), commission=float(commission_rate)
+                )
 
-                        total_return = round(random.uniform(-0.3, 0.5), 4)
-                        annual_return = round(total_return * 365 / 100, 4)  # 简化计算
-                        max_drawdown = round(random.uniform(0.05, 0.25), 4)
-                        sharpe_ratio = round(random.uniform(0.5, 2.5), 4)
-                        win_rate = round(random.uniform(0.4, 0.7), 4)
-                        profit_loss_ratio = round(random.uniform(1.2, 3.0), 4)
-                        trade_count = random.randint(10, 100)
-                        final_fund = initial_fund * (1 + total_return)
+                # 使用数据准备模块的输出运行回测
+                config = backtest_engine.load_data_direct(prepared_data)
+                results = backtest_engine.run_backtest(config, print_log=False)
 
-                        insert_report_sql = """
-                        INSERT INTO BacktestReport (
-                            report_id, creator_name, strategy_name, user_name, backtest_type,
-                            stock_code, start_date, end_date, initial_fund, final_fund,
-                            total_return, annual_return, max_drawdown, sharpe_ratio,
-                            win_rate, profit_loss_ratio, trade_count, report_status
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                # 第三阶段：生成图表数据
+                logger.info(f"生成图表数据，策略: {strategy_creator}.{strategy_name}")
+
+                # 生成matplotlib图表的base64数据
+                chart_base64 = backtest_engine.generate_matplotlib_plot()
+
+                # 生成plotly图表的JSON数据
+                plotly_data = None
+                try:
+                    plotly_data = backtest_engine.generate_plotly_json(
+                        f"{strategy_name}回测结果"
+                    )
+                    plotly_json_str = json.dumps(plotly_data)
+                except Exception as e:
+                    logger.warning(f"Plotly图表生成失败: {e}")
+                    plotly_json_str = None
+
+                # 第四阶段：更新回测报告
+                logger.info(f"更新回测报告，策略: {strategy_creator}.{strategy_name}")
+
+                final_fund = results["final_value"]
+                total_return = results["total_return"]
+                annual_return = (
+                    total_return
+                    * 365
+                    / (
+                        (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days
+                        or 1
+                    )
+                )
+
+                analysis = results.get("analysis", {})
+                max_drawdown = analysis.get("max_drawdown", 0)
+                sharpe_ratio = analysis.get("sharpe_ratio", 0)
+                win_rate = analysis.get("win_rate", 0)
+                total_trades = analysis.get("total_trades", 0)
+
+                # 计算盈亏比（简化计算）
+                profit_loss_ratio = 1.0
+                if analysis.get("lost_total", 0) > 0:
+                    won_avg = total_return / max(analysis.get("won_total", 1), 1)
+                    lost_avg = abs(total_return) / max(analysis.get("lost_total", 1), 1)
+                    if lost_avg > 0:
+                        profit_loss_ratio = won_avg / lost_avg
+
+                # 更新数据库记录
+                with connection.cursor() as cursor:
+                    cursor.execute(
                         """
-
-                        cursor.execute(
-                            insert_report_sql,
-                            (
-                                report_id,
-                                strategy_creator,
-                                strategy_name,
-                                current_user_name,
-                                "STOCK",
-                                stock_code,
-                                start_date,
-                                end_date,
-                                initial_fund,
-                                final_fund,
-                                total_return,
-                                annual_return,
-                                max_drawdown,
-                                sharpe_ratio,
-                                win_rate,
-                                profit_loss_ratio,
-                                trade_count,
-                                "completed",
-                            ),
-                        )
-                        connection.commit()
-
-                    finally:
-                        connection.close()
+                        UPDATE BacktestReport SET
+                            final_fund = %s, total_return = %s, annual_return = %s,
+                            max_drawdown = %s, sharpe_ratio = %s, win_rate = %s,
+                            profit_loss_ratio = %s, trade_count = %s,
+                            chart_data = %s, plotly_chart_data = %s,
+                            report_status = 'completed'
+                        WHERE report_id = %s
+                    """,
+                        (
+                            final_fund,
+                            total_return,
+                            annual_return,
+                            max_drawdown,
+                            sharpe_ratio,
+                            win_rate,
+                            profit_loss_ratio,
+                            total_trades,
+                            chart_base64,
+                            plotly_json_str,
+                            report_id,
+                        ),
+                    )
+                    connection.commit()
 
                 # 发送回测完成消息
                 create_message(
                     user_name=current_user_name,
                     message_type="backtest_complete",
                     title=f"回测完成 - {strategy_name}",
-                    content=f"策略 '{strategy_name}' 针对股票 {stock_code} 的回测已完成！总收益率: {total_return*100:.2f}%，点击查看详细报告。",
-                    link_url="/backtest-report",
-                    link_params={
-                        "report_id": report_id,
-                        "strategy_name": strategy_name,
-                    },
+                    content=f"策略 '{strategy_name}' 回测已完成。总收益率: {total_return:.2%}，夏普比率: {sharpe_ratio:.4f}",
+                    link_url="/backtests",
+                    link_params={"report_id": report_id},
                 )
+
+                logger.info(f"回测任务完成，报告ID: {report_id}")
 
             except Exception as e:
                 logger.error(f"回测任务执行失败: {str(e)}")
-                # 发送错误消息
+
+                # 更新失败状态
+                if connection:
+                    try:
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                UPDATE BacktestReport SET
+                                    report_status = 'failed',
+                                    error_message = %s
+                                WHERE report_id = %s
+                            """,
+                                (str(e), report_id),
+                            )
+                            connection.commit()
+                    except Exception as db_e:
+                        logger.error(f"更新失败状态时出错: {str(db_e)}")
+
+                # 发送失败消息
                 create_message(
                     user_name=current_user_name,
                     message_type="error_alert",
                     title=f"回测失败 - {strategy_name}",
-                    content=f"策略 '{strategy_name}' 的回测任务执行失败，请重试或联系管理员。错误信息: {str(e)}",
+                    content=f"策略 '{strategy_name}' 回测执行失败: {str(e)}",
                 )
+
+            finally:
+                if connection:
+                    connection.close()
 
         # 启动后台线程
         thread = threading.Thread(target=backtest_task)
@@ -3681,7 +3778,6 @@ def get_backtest_list(current_user):
             # 查询回测报告列表，按时间倒序
             list_sql = """
             SELECT report_id, creator_name, strategy_name, user_name, 
-                   backtest_type, stock_code, component_count,
                    start_date, end_date, initial_fund, final_fund,
                    total_return, annual_return, max_drawdown, sharpe_ratio,
                    win_rate, profit_loss_ratio, trade_count,
@@ -3707,19 +3803,6 @@ def get_backtest_list(current_user):
                             report["strategy_name"] if report["strategy_name"] else ""
                         ),
                         "user_name": report["user_name"] if report["user_name"] else "",
-                        "backtest_type": (
-                            report["backtest_type"]
-                            if report["backtest_type"]
-                            else "STOCK"
-                        ),
-                        "stock_code": (
-                            report["stock_code"] if report["stock_code"] else ""
-                        ),
-                        "component_count": (
-                            report["component_count"]
-                            if report["component_count"]
-                            else 0
-                        ),
                         "start_date": (
                             report["start_date"].strftime("%Y-%m-%d")
                             if report["start_date"]
@@ -3730,7 +3813,7 @@ def get_backtest_list(current_user):
                             if report["end_date"]
                             else None
                         ),
-                        "initial_capital": (
+                        "initial_fund": (
                             float(report["initial_fund"])
                             if report["initial_fund"] is not None
                             else 0
@@ -3775,7 +3858,7 @@ def get_backtest_list(current_user):
                             if report["trade_count"] is not None
                             else 0
                         ),
-                        "run_time": (
+                        "report_generate_time": (
                             report["report_generate_time"].strftime("%Y-%m-%d %H:%M:%S")
                             if report["report_generate_time"]
                             else None
@@ -3851,11 +3934,9 @@ def get_backtest_list_simple(current_user):
                     "user_name": str(report["user_name"]),
                     "start_date": str(report["start_date"]),
                     "end_date": str(report["end_date"]),
-                    "initial_capital": float(report["initial_fund"]),
+                    "initial_fund": float(report["initial_fund"]),
                     "report_status": str(report["report_status"]),
-                    "run_time": str(report["report_generate_time"]),
-                    "commission_rate": 0.03,
-                    "slippage_rate": 0.01,
+                    "report_generate_time": str(report["report_generate_time"]),
                 }
                 simple_reports.append(simple_report)
 
@@ -3899,9 +3980,14 @@ def get_backtest_report(current_user, report_id):
         try:
             cursor = connection.cursor()
 
-            # 获取回测报告 - 添加用户权限验证
+            # 获取回测报告 - 添加用户权限验证，包含图表数据
             report_sql = """
-            SELECT * FROM BacktestReport 
+            SELECT report_id, creator_name, strategy_name, user_name,
+                   start_date, end_date, initial_fund, final_fund, 
+                   total_return, annual_return, max_drawdown, sharpe_ratio,
+                   win_rate, profit_loss_ratio, trade_count, chart_data, 
+                   plotly_chart_data, report_generate_time, report_status
+            FROM BacktestReport 
             WHERE report_id = %s AND user_name = %s
             """
             cursor.execute(report_sql, (report_id, current_user["user_name"]))
@@ -3909,6 +3995,26 @@ def get_backtest_report(current_user, report_id):
 
             if not report:
                 return jsonify({"message": "回测报告不存在或无权限访问"}), 404
+
+            # 格式化日期字段
+            if report.get("start_date"):
+                report["start_date"] = report["start_date"].strftime("%Y-%m-%d")
+            if report.get("end_date"):
+                report["end_date"] = report["end_date"].strftime("%Y-%m-%d")
+            if report.get("report_generate_time"):
+                report["report_generate_time"] = report[
+                    "report_generate_time"
+                ].strftime("%Y-%m-%d %H:%M:%S")
+
+            # 处理plotly数据
+            if report.get("plotly_chart_data"):
+                try:
+                    report["plotly_chart_data"] = json.loads(
+                        report["plotly_chart_data"]
+                    )
+                except json.JSONDecodeError:
+                    logger.warning(f"无法解析报告 {report_id} 的plotly数据")
+                    report["plotly_chart_data"] = None
 
             return jsonify({"success": True, "data": report}), 200
 
