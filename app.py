@@ -141,7 +141,8 @@ def login():
     """用户登录接口"""
     try:
         data = request.get_json()
-        user_name = data.get("userName")
+        # 兼容两种参数名格式
+        user_name = data.get("userName") or data.get("user_name")
         password = data.get("password")
 
         if not user_name or not password:
@@ -219,7 +220,8 @@ def register():
     """用户注册接口"""
     try:
         data = request.get_json()
-        user_name = data.get("userName")
+        # 兼容两种参数名格式
+        user_name = data.get("userName") or data.get("user_name")
         password = data.get("password")
         email = data.get("email")
         phone = data.get("phone")
@@ -3405,8 +3407,8 @@ def mark_message_read(current_user, message_id):
                 return jsonify({"message": "消息已经是已读状态"}), 200
 
             # 更新为已读
-            update_sql = "UPDATE Messages SET status = 'read', read_at = %s WHERE message_id = %s"
-            cursor.execute(update_sql, (datetime.now(), message_id))
+            update_sql = "UPDATE Messages SET status = 'read', read_at = %s WHERE message_id = %s AND user_name = %s"
+            cursor.execute(update_sql, (datetime.now(), message_id, current_user_name))
             connection.commit()
 
             return jsonify({"message": "消息已标记为已读"}), 200
@@ -3442,8 +3444,8 @@ def delete_message(current_user, message_id):
                 return jsonify({"message": "消息不存在"}), 404
 
             # 删除消息
-            delete_sql = "DELETE FROM Messages WHERE message_id = %s"
-            cursor.execute(delete_sql, (message_id,))
+            delete_sql = "DELETE FROM Messages WHERE message_id = %s AND user_name = %s"
+            cursor.execute(delete_sql, (message_id, current_user_name))
             connection.commit()
 
             return jsonify({"message": "消息已删除"}), 200
@@ -3897,16 +3899,16 @@ def get_backtest_report(current_user, report_id):
         try:
             cursor = connection.cursor()
 
-            # 获取回测报告
+            # 获取回测报告 - 添加用户权限验证
             report_sql = """
             SELECT * FROM BacktestReport 
-            WHERE report_id = %s
+            WHERE report_id = %s AND user_name = %s
             """
-            cursor.execute(report_sql, (report_id,))
+            cursor.execute(report_sql, (report_id, current_user["user_name"]))
             report = cursor.fetchone()
 
             if not report:
-                return jsonify({"message": "回测报告不存在"}), 404
+                return jsonify({"message": "回测报告不存在或无权限访问"}), 404
 
             return jsonify({"success": True, "data": report}), 200
 
