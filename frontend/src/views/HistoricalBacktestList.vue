@@ -122,11 +122,13 @@
             >
             <span
               >初始资金：{{
-                Number(selectedBacktest.initial_capital).toLocaleString()
+                selectedBacktest?.initial_fund !== null &&
+                selectedBacktest?.initial_fund !== undefined &&
+                !isNaN(selectedBacktest.initial_fund)
+                  ? selectedBacktest.initial_fund.toLocaleString()
+                  : "--"
               }}元</span
             >
-            <span>佣金费率：{{ selectedBacktest.commission_rate }}%</span>
-            <span>滑点率：{{ selectedBacktest.slippage_rate }}%</span>
           </div>
         </div>
         <div class="report-charts">
@@ -134,15 +136,9 @@
           <div class="chart-container">
             <h4>回测净值曲线</h4>
             <div class="chart">
-              <!-- 如果有matplotlib图表数据，显示base64图片 -->
-              <img
-                v-if="selectedBacktest?.chart_data"
-                :src="selectedBacktest.chart_data"
-                alt="回测净值曲线"
-                style="width: 100%; height: 100%; object-fit: contain" />
-              <!-- 如果有plotly图表数据，显示交互式图表 -->
+              <!-- 显示plotly交互式图表 -->
               <div
-                v-else-if="selectedBacktest?.plotly_chart_data"
+                v-if="selectedBacktest?.plotly_chart_data"
                 id="plotly-chart"
                 style="width: 100%; height: 500px"></div>
               <!-- 没有图表数据时的占位符 -->
@@ -278,9 +274,13 @@ let Plotly = null;
 const loadPlotly = async () => {
   if (!Plotly) {
     try {
+      console.log("正在加载Plotly库...");
       Plotly = await import("plotly.js-dist");
+      console.log("Plotly库加载成功", Plotly);
     } catch (error) {
+      console.error("Plotly库加载失败:", error);
       console.warn("Plotly未安装，将无法显示交互式图表");
+      return null;
     }
   }
   return Plotly;
@@ -406,7 +406,19 @@ export default {
       const processed = { ...data };
       numericFields.forEach((field) => {
         if (processed[field] !== null && processed[field] !== undefined) {
-          processed[field] = Number(processed[field]);
+          const numValue = Number(processed[field]);
+          // 如果转换结果是NaN，根据字段类型设置默认值
+          if (isNaN(numValue)) {
+            if (field === "initial_fund" || field === "final_fund") {
+              processed[field] = 0;
+            } else if (field === "trade_count") {
+              processed[field] = 0;
+            } else {
+              processed[field] = 0; // 比率类型默认为0
+            }
+          } else {
+            processed[field] = numValue;
+          }
         }
       });
 
@@ -422,14 +434,19 @@ export default {
           return null;
         }
 
+        console.log("正在获取回测报告:", reportId);
         const response = await axios.get(`/api/backtest/report/${reportId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
+        console.log("API响应:", response.data);
+
         if (response.data.success) {
-          return processBacktestData(response.data.data);
+          const processedData = processBacktestData(response.data.data);
+          console.log("处理后的数据:", processedData);
+          return processedData;
         } else {
           ElMessage.error("获取回测报告失败");
           return null;
@@ -443,13 +460,34 @@ export default {
 
     // 渲染Plotly图表
     const renderPlotlyChart = async (chartData) => {
+      console.log("开始渲染Plotly图表:", chartData);
+
       const PlotlyLib = await loadPlotly();
-      if (!PlotlyLib || !chartData) return;
+      if (!PlotlyLib) {
+        console.error("Plotly库未加载");
+        return;
+      }
+
+      if (!chartData) {
+        console.error("没有图表数据");
+        return;
+      }
 
       const chartDiv = document.getElementById("plotly-chart");
-      if (!chartDiv) return;
+      if (!chartDiv) {
+        console.error("找不到图表容器元素 plotly-chart");
+        return;
+      }
 
+      console.log("找到图表容器元素，开始渲染...");
       try {
+        console.log("图表数据结构:", {
+          hasData: !!chartData.data,
+          dataLength: chartData.data?.length,
+          hasLayout: !!chartData.layout,
+          layoutKeys: chartData.layout ? Object.keys(chartData.layout) : [],
+        });
+
         await PlotlyLib.newPlot(chartDiv, chartData.data, chartData.layout, {
           responsive: true,
           displayModeBar: true,
@@ -461,32 +499,58 @@ export default {
           ],
           displaylogo: false,
         });
+
+        console.log("Plotly图表渲染成功");
       } catch (error) {
         console.error("渲染Plotly图表失败:", error);
+        console.error("图表数据:", chartData);
       }
     };
 
     // 查看回测报告
     const viewBacktestReport = async (backtest) => {
-      // 如果传入的是 report_id 字符串，先获取完整报告数据
+      let reportId;
+
+      // 获取报告ID
       if (typeof backtest === "string") {
-        const reportData = await fetchBacktestReport(backtest);
-        if (reportData) {
-          selectedBacktest.value = reportData;
-          reportDialogVisible.value = true;
-        }
+        reportId = backtest;
+        console.log("从信箱链接查看报告，ID:", reportId);
       } else {
-        // 如果传入的是完整的backtest对象
-        selectedBacktest.value = processBacktestData(backtest);
-        reportDialogVisible.value = true;
+        reportId = backtest.report_id;
+        console.log("从回测列表查看报告，ID:", reportId);
       }
 
-      // 等待弹窗渲染完成后，初始化图表
-      await nextTick();
+      if (!reportId) {
+        ElMessage.error("无法获取报告ID");
+        return;
+      }
 
-      // 如果有plotly图表数据，渲染交互式图表
-      if (selectedBacktest.value?.plotly_chart_data) {
-        await renderPlotlyChart(selectedBacktest.value.plotly_chart_data);
+      // 统一从API获取完整的报告数据（包含图表数据）
+      const reportData = await fetchBacktestReport(reportId);
+      if (reportData) {
+        console.log("获取到的报告数据:", reportData);
+        selectedBacktest.value = reportData;
+        reportDialogVisible.value = true;
+
+        // 检查图表数据
+        console.log("检查图表数据:");
+        console.log(
+          "- plotly_chart_data:",
+          !!selectedBacktest.value?.plotly_chart_data
+        );
+
+        // 等待弹窗渲染完成后，初始化图表
+        await nextTick();
+
+        // 如果有plotly图表数据，渲染交互式图表
+        if (selectedBacktest.value?.plotly_chart_data) {
+          console.log("准备渲染Plotly图表...");
+          await renderPlotlyChart(selectedBacktest.value.plotly_chart_data);
+        } else {
+          console.log("没有Plotly图表数据，将显示占位符");
+        }
+      } else {
+        console.error("获取报告数据失败");
       }
     };
 

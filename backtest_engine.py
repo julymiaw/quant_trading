@@ -20,14 +20,6 @@ from typing import Dict, List, Optional, Tuple, Any
 import backtrader as bt
 import pandas as pd
 import numpy as np
-import matplotlib
-
-matplotlib.use("Agg")  # 设置非GUI后端
-import matplotlib.pyplot as plt
-
-# 配置中文字体
-plt.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans", "Arial"]
-plt.rcParams["axes.unicode_minus"] = False
 
 try:
     import plotly.graph_objects as go
@@ -502,38 +494,7 @@ class BacktestEngine:
 
         return results
 
-    def generate_matplotlib_plot(self, save_path: Optional[str] = None) -> str:
-        """
-        生成matplotlib图表
 
-        Args:
-            save_path: 保存路径，如果不提供则返回base64编码
-
-        Returns:
-            图表的base64编码字符串或文件路径
-        """
-        if self.cerebro is None:
-            raise ValueError("请先运行回测")
-
-        # 生成matplotlib图表
-        figs = self.cerebro.plot(volume=False, iplot=False)
-
-        if save_path:
-            # 保存到文件
-            if figs and len(figs) > 0 and len(figs[0]) > 0:
-                figs[0][0].savefig(save_path, dpi=150, bbox_inches="tight")
-            return save_path
-        else:
-            # 转换为base64
-            img_buffer = io.BytesIO()
-            if figs and len(figs) > 0 and len(figs[0]) > 0:
-                figs[0][0].savefig(
-                    img_buffer, format="png", dpi=150, bbox_inches="tight"
-                )
-                img_buffer.seek(0)
-                img_base64 = base64.b64encode(img_buffer.read()).decode("utf-8")
-                return f"data:image/png;base64,{img_base64}"
-            return ""
 
     def generate_plotly_html(self, title: str = "回测结果") -> str:
         """
@@ -808,11 +769,7 @@ if __name__ == "__main__":
         print(f"最大回撤: {results['analysis']['max_drawdown']:.2%}")
         print(f"胜率: {results['analysis']['win_rate']:.2%}")
 
-        # 生成matplotlib图表
-        plot_base64 = engine.generate_matplotlib_plot()
-        print(f"\\nMatplotlib图表已生成 (base64长度: {len(plot_base64)})")
-
-        # 如果安装了plotly，生成交互式图表
+        # 生成交互式图表
         if PLOTLY_AVAILABLE:
             html_plot = engine.generate_plotly_html("双均线策略回测结果")
             print(f"Plotly HTML图表已生成 (长度: {len(html_plot)})")

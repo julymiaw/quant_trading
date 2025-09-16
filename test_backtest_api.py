@@ -101,9 +101,7 @@ def test_backtest_engine(prepared_data):
         print(f"   最大回撤: {results['analysis']['max_drawdown']:.2%}")
 
         # 生成图表
-        print("   🔄 生成图表...")
-        chart_base64 = engine.generate_matplotlib_plot()
-        print(f"   ✅ Matplotlib图表生成完成 (长度: {len(chart_base64)})")
+        print("   🔄 生成Plotly图表...")
 
         # 尝试生成plotly图表
         try:
@@ -117,7 +115,6 @@ def test_backtest_engine(prepared_data):
 
         return {
             "results": results,
-            "chart_base64": chart_base64,
             "plotly_data": plotly_data,
             "engine": engine,
         }

@@ -3615,9 +3615,6 @@ def start_backtest(current_user):
                 # 第三阶段：生成图表数据
                 logger.info(f"生成图表数据，策略: {strategy_creator}.{strategy_name}")
 
-                # 生成matplotlib图表的base64数据
-                chart_base64 = backtest_engine.generate_matplotlib_plot()
-
                 # 生成plotly图表的JSON数据
                 plotly_data = None
                 try:
@@ -3671,7 +3668,7 @@ def start_backtest(current_user):
                             final_fund = %s, total_return = %s, annual_return = %s,
                             max_drawdown = %s, sharpe_ratio = %s, win_rate = %s,
                             profit_loss_ratio = %s, trade_count = %s,
-                            chart_data = %s, plotly_chart_data = %s,
+                            plotly_chart_data = %s,
                             report_status = 'completed'
                         WHERE report_id = %s
                     """,
@@ -3684,7 +3681,6 @@ def start_backtest(current_user):
                             win_rate,
                             profit_loss_ratio,
                             total_trades,
-                            chart_base64,
                             plotly_json_str,
                             report_id,
                         ),
@@ -3933,7 +3929,7 @@ def get_backtest_report(current_user, report_id):
             SELECT report_id, creator_name, strategy_name, user_name,
                    start_date, end_date, initial_fund, final_fund, 
                    total_return, annual_return, max_drawdown, sharpe_ratio,
-                   win_rate, profit_loss_ratio, trade_count, chart_data, 
+                   win_rate, profit_loss_ratio, trade_count, 
                    plotly_chart_data, report_generate_time, report_status
             FROM BacktestReport 
             WHERE report_id = %s AND user_name = %s

@@ -423,8 +423,19 @@ export default {
     const handleMessageLink = (message) => {
       if (message.link_url && message.link_params) {
         try {
-          const params = JSON.parse(message.link_params);
-          if (message.link_url === "/backtest-report") {
+          // 调试信息
+          console.log("link_params type:", typeof message.link_params);
+          console.log("link_params value:", message.link_params);
+
+          let params;
+          if (typeof message.link_params === "string") {
+            params = JSON.parse(message.link_params);
+          } else {
+            // 如果已经是对象，直接使用
+            params = message.link_params;
+          }
+
+          if (message.link_url === "/backtests") {
             // 跳转到回测报告页面
             router.push({
               name: "HistoricalBacktestList",

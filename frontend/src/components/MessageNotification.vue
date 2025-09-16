@@ -158,8 +158,19 @@ export default {
       // 如果有链接，处理链接跳转
       if (notification.link_url && notification.link_params) {
         try {
-          const params = JSON.parse(notification.link_params);
-          if (notification.link_url === "/backtest-report") {
+          // 调试信息
+          console.log("link_params type:", typeof notification.link_params);
+          console.log("link_params value:", notification.link_params);
+
+          let params;
+          if (typeof notification.link_params === "string") {
+            params = JSON.parse(notification.link_params);
+          } else {
+            // 如果已经是对象，直接使用
+            params = notification.link_params;
+          }
+
+          if (notification.link_url === "/backtests") {
             // 跳转到回测报告页面并打开弹窗
             router.push({
               name: "HistoricalBacktestList",
@@ -171,6 +182,7 @@ export default {
           }
         } catch (e) {
           console.error("解析链接参数失败:", e);
+          console.error("原始数据:", notification.link_params);
         }
       }
 
