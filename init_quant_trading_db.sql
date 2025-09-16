@@ -155,6 +155,7 @@ CREATE TABLE BacktestReport (
     plotly_chart_data LONGTEXT COMMENT 'Plotly交互式图表的JSON数据',
     report_generate_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '报告生成时间',
     report_status ENUM('generating', 'completed', 'failed') NOT NULL DEFAULT 'generating' COMMENT '报告状态',
+    error_message TEXT COMMENT '当报告状态为failed时存储错误信息',
 
     PRIMARY KEY (report_id),
     INDEX idx_strategy_generate_time (creator_name, strategy_name, report_generate_time),

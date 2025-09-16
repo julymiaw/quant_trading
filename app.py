@@ -3649,11 +3649,17 @@ def start_backtest(current_user):
                 win_rate = analysis.get("win_rate", 0)
                 total_trades = analysis.get("total_trades", 0)
 
-                # 计算盈亏比（简化计算）
-                profit_loss_ratio = 1.0
-                if analysis.get("lost_total", 0) > 0:
-                    won_avg = total_return / max(analysis.get("won_total", 1), 1)
-                    lost_avg = abs(total_return) / max(analysis.get("lost_total", 1), 1)
+                # 计算盈亏比（修复计算逻辑）
+                profit_loss_ratio = None  # 默认为 NULL
+                won_total = analysis.get("won_total", 0)
+                lost_total = analysis.get("lost_total", 0)
+
+                if won_total > 0 and lost_total > 0:
+                    # 只有当有盈利和亏损交易时才计算盈亏比
+                    won_avg = analysis.get("won_pnl_avg", 0)  # 使用平均盈利
+                    lost_avg = abs(
+                        analysis.get("lost_pnl_avg", 0)
+                    )  # 使用平均亏损的绝对值
                     if lost_avg > 0:
                         profit_loss_ratio = won_avg / lost_avg
 
@@ -3737,6 +3743,7 @@ def start_backtest(current_user):
         return (
             jsonify(
                 {
+                    "code": 200,
                     "success": True,
                     "message": "回测任务已启动，请稍后查看消息通知",
                     "report_id": report_id,

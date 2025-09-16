@@ -365,9 +365,12 @@ class BacktestEngine:
             if missing_columns:
                 raise ValueError(f"数据缺少以下列: {missing_columns}")
 
+            # 使用trade_date列作为datetime，并转换为pandas datetime格式
+            trade_dates = pd.to_datetime(group["trade_date"])
+            
             data = pd.DataFrame(
                 {
-                    "datetime": group.index,
+                    "datetime": trade_dates,
                     "open": group[
                         param_columns_map.get("system.open", "system.open")
                     ].values,
