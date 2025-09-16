@@ -97,7 +97,9 @@ class BacktestFlowTester:
         print("\n🔄 测试回测引擎...")
 
         try:
-            engine = BacktestEngine(initial_fund=100000.0, commission=0.001)
+            engine = BacktestEngine(
+                initial_fund=100000.0, buy_fee_rate=0.0003, sell_fee_rate=0.0013
+            )
 
             # 运行回测
             config = engine.load_data_direct(prepared_data)

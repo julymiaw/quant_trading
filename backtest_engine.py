@@ -210,16 +210,18 @@ class BacktestEngine:
     支持生成HTML格式的交互式图表
     """
 
-    def __init__(self, initial_fund: float = 100000.0, commission: float = 0.001):
+    def __init__(self, initial_fund: float = 100000.0, buy_fee_rate: float = 0.0003, sell_fee_rate: float = 0.0013):
         """
         初始化回测引擎
 
         Args:
             initial_fund: 初始资金
-            commission: 手续费率
+            buy_fee_rate: 买入手续费率
+            sell_fee_rate: 卖出手续费率
         """
         self.initial_fund = initial_fund
-        self.commission = commission
+        self.buy_fee_rate = buy_fee_rate
+        self.sell_fee_rate = sell_fee_rate
         self.results = None
         self.cerebro = None
 
@@ -419,7 +421,9 @@ class BacktestEngine:
 
         # 设置初始资金和手续费
         self.cerebro.broker.setcash(self.initial_fund)
-        self.cerebro.broker.setcommission(commission=self.commission)
+        # 设置买入和卖出手续费 - backtrader默认使用平均手续费，我们取两者的平均值
+        avg_commission = (self.buy_fee_rate + self.sell_fee_rate) / 2
+        self.cerebro.broker.setcommission(commission=avg_commission)
 
         # 添加分析器
         self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="returns")
@@ -723,7 +727,8 @@ def run_backtest_from_files(
     csv_path: str,
     json_path: str,
     initial_fund: float = 100000.0,
-    commission: float = 0.001,
+    buy_fee_rate: float = 0.0003,
+    sell_fee_rate: float = 0.0013,
     print_log: bool = False,
 ) -> Tuple[Dict[str, Any], BacktestEngine]:
     """
@@ -733,13 +738,14 @@ def run_backtest_from_files(
         csv_path: CSV数据文件路径
         json_path: JSON配置文件路径
         initial_fund: 初始资金
-        commission: 手续费率
+        buy_fee_rate: 买入手续费率
+        sell_fee_rate: 卖出手续费率
         print_log: 是否打印日志
 
     Returns:
         (回测结果字典, 回测引擎实例)
     """
-    engine = BacktestEngine(initial_fund=initial_fund, commission=commission)
+    engine = BacktestEngine(initial_fund=initial_fund, buy_fee_rate=buy_fee_rate, sell_fee_rate=sell_fee_rate)
     config = engine.load_data_from_file(csv_path, json_path)
     results = engine.run_backtest(config, print_log=print_log)
     return results, engine
@@ -748,7 +754,8 @@ def run_backtest_from_files(
 def run_backtest_from_data(
     data_dict: Dict[str, Any],
     initial_fund: float = 100000.0,
-    commission: float = 0.001,
+    buy_fee_rate: float = 0.0003,
+    sell_fee_rate: float = 0.0013,
     print_log: bool = False,
 ) -> Tuple[Dict[str, Any], BacktestEngine]:
     """
@@ -757,13 +764,14 @@ def run_backtest_from_data(
     Args:
         data_dict: 数据字典（来自数据准备模块）
         initial_fund: 初始资金
-        commission: 手续费率
+        buy_fee_rate: 买入手续费率
+        sell_fee_rate: 卖出手续费率
         print_log: 是否打印日志
 
     Returns:
         (回测结果字典, 回测引擎实例)
     """
-    engine = BacktestEngine(initial_fund=initial_fund, commission=commission)
+    engine = BacktestEngine(initial_fund=initial_fund, buy_fee_rate=buy_fee_rate, sell_fee_rate=sell_fee_rate)
     config = engine.load_data_direct(data_dict)
     results = engine.run_backtest(config, print_log=print_log)
     return results, engine
@@ -784,7 +792,8 @@ if __name__ == "__main__":
             csv_path=csv_path,
             json_path=json_path,
             initial_fund=100000.0,
-            commission=0.001,
+            buy_fee_rate=0.0003,
+            sell_fee_rate=0.0013,
             print_log=True,
         )
 

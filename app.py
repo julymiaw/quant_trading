@@ -3599,12 +3599,13 @@ def start_backtest(current_user):
 
                 # 从数据准备结果中获取策略手续费信息
                 strategy_info = prepared_data.get("strategy_info", {})
-                commission_rate = strategy_info.get(
-                    "buy_fee_rate", 0.001
-                )  # 使用买入费率作为默认佣金
+                buy_fee_rate = strategy_info.get("buy_fee_rate", 0.0003)
+                sell_fee_rate = strategy_info.get("sell_fee_rate", 0.0013)
 
                 backtest_engine = BacktestEngine(
-                    initial_fund=float(initial_fund), commission=float(commission_rate)
+                    initial_fund=float(initial_fund),
+                    buy_fee_rate=float(buy_fee_rate),
+                    sell_fee_rate=float(sell_fee_rate),
                 )
 
                 # 使用数据准备模块的输出运行回测
@@ -3777,7 +3778,7 @@ def get_backtest_list(current_user):
 
             # 查询回测报告列表，按时间倒序
             list_sql = """
-            SELECT report_id, creator_name, strategy_name, user_name, 
+            SELECT report_id, creator_name, strategy_name, 
                    start_date, end_date, initial_fund, final_fund,
                    total_return, annual_return, max_drawdown, sharpe_ratio,
                    win_rate, profit_loss_ratio, trade_count,
@@ -3790,88 +3791,28 @@ def get_backtest_list(current_user):
             cursor.execute(list_sql, (current_user["user_name"], page_size, offset))
             raw_reports = cursor.fetchall()
 
-            # 将数据库字段映射为前端期望的字段名
+            # 简化处理：只格式化日期和时间字段
             reports = []
             for report in raw_reports:
                 try:
-                    mapped_report = {
-                        "report_id": report["report_id"] if report["report_id"] else "",
-                        "creator_name": (
-                            report["creator_name"] if report["creator_name"] else ""
-                        ),
-                        "strategy_name": (
-                            report["strategy_name"] if report["strategy_name"] else ""
-                        ),
-                        "user_name": report["user_name"] if report["user_name"] else "",
-                        "start_date": (
-                            report["start_date"].strftime("%Y-%m-%d")
-                            if report["start_date"]
-                            else None
-                        ),
-                        "end_date": (
-                            report["end_date"].strftime("%Y-%m-%d")
-                            if report["end_date"]
-                            else None
-                        ),
-                        "initial_fund": (
-                            float(report["initial_fund"])
-                            if report["initial_fund"] is not None
-                            else 0
-                        ),
-                        "final_fund": (
-                            float(report["final_fund"])
-                            if report["final_fund"] is not None
-                            else 0
-                        ),
-                        "total_return": (
-                            float(report["total_return"])
-                            if report["total_return"] is not None
-                            else 0
-                        ),
-                        "annual_return": (
-                            float(report["annual_return"])
-                            if report["annual_return"] is not None
-                            else 0
-                        ),
-                        "max_drawdown": (
-                            float(report["max_drawdown"])
-                            if report["max_drawdown"] is not None
-                            else 0
-                        ),
-                        "sharpe_ratio": (
-                            float(report["sharpe_ratio"])
-                            if report["sharpe_ratio"] is not None
-                            else 0
-                        ),
-                        "win_rate": (
-                            float(report["win_rate"])
-                            if report["win_rate"] is not None
-                            else 0
-                        ),
-                        "profit_loss_ratio": (
-                            float(report["profit_loss_ratio"])
-                            if report["profit_loss_ratio"] is not None
-                            else 0
-                        ),
-                        "trade_count": (
-                            int(report["trade_count"])
-                            if report["trade_count"] is not None
-                            else 0
-                        ),
-                        "report_generate_time": (
-                            report["report_generate_time"].strftime("%Y-%m-%d %H:%M:%S")
-                            if report["report_generate_time"]
-                            else None
-                        ),
-                        "report_status": (
-                            report["report_status"]
-                            if report["report_status"]
-                            else "unknown"
-                        ),
-                        "commission_rate": 0.03,
-                        "slippage_rate": 0.01,
-                    }
-                    reports.append(mapped_report)
+                    # 直接使用数据库字段，只处理日期格式化
+                    processed_report = dict(report)
+
+                    # 格式化日期字段
+                    if processed_report.get("start_date"):
+                        processed_report["start_date"] = processed_report[
+                            "start_date"
+                        ].strftime("%Y-%m-%d")
+                    if processed_report.get("end_date"):
+                        processed_report["end_date"] = processed_report[
+                            "end_date"
+                        ].strftime("%Y-%m-%d")
+                    if processed_report.get("report_generate_time"):
+                        processed_report["report_generate_time"] = processed_report[
+                            "report_generate_time"
+                        ].strftime("%Y-%m-%d %H:%M:%S")
+
+                    reports.append(processed_report)
                 except Exception as map_error:
                     logger.error(f"映射回测记录失败: {str(map_error)}")
                     continue

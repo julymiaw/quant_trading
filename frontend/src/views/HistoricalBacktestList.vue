@@ -72,18 +72,7 @@
             }}
           </template>
         </el-table-column>
-        <el-table-column prop="commission_rate" label="佣金费率" width="100">
-          <template #default="scope">
-            {{
-              scope.row.commission_rate ? `${scope.row.commission_rate}%` : "-"
-            }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="slippage_rate" label="滑点率" width="100">
-          <template #default="scope">
-            {{ scope.row.slippage_rate ? `${scope.row.slippage_rate}%` : "-" }}
-          </template>
-        </el-table-column>
+
         <el-table-column prop="run_time" label="发起时间" width="180">
           <template #default="scope">
             {{ formatStartTime(scope.row.run_time) }}
