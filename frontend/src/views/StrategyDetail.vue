@@ -1086,18 +1086,49 @@ export default {
 
         loading.value = true;
 
-        // 这里使用模拟回测，实际开发中应替换为真实的API调用
-        // const response = await axios.post(`/api/strategies/${strategy.creator_name}/${strategy.strategy_name}/backtest`, backtestForm)
+        // 获取token
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-        // 模拟回测成功
-        ElMessage.success("回测已开始，请在回测结果页面查看");
-        backtestDialogVisible.value = false;
+        // 构建回测请求参数
+        const backtestData = {
+          strategy_creator: strategy.value.creator_name,
+          strategy_name: strategy.value.strategy_name,
+          start_date: backtestForm.start_date.toISOString().split("T")[0],
+          end_date: backtestForm.end_date.toISOString().split("T")[0],
+          initial_capital: backtestForm.initial_cash || 100000,
+          commission_rate: backtestForm.commission_rate || 0.0003,
+          slippage_rate: backtestForm.slippage_rate || 0.0001,
+          stock_code: "000001.SZ", // 默认使用深证成指
+        };
 
-        // 跳转到回测结果页面
-        // router.push({ name: 'BacktestResult', params: { backtestId: response.data.backtest_id } })
+        // 调用真实的回测API
+        const response = await axios.post("/api/backtest/start", backtestData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.data.code === 200) {
+          ElMessage.success(
+            "回测任务已启动！请留意右上角的消息通知，完成后可在历史回测页面查看结果"
+          );
+          backtestDialogVisible.value = false;
+
+          // 可选：跳转到历史回测页面
+          // router.push('/backtest');
+        } else {
+          ElMessage.error(response.data.message || "回测启动失败");
+        }
       } catch (error) {
         console.error("回测失败:", error);
-        ElMessage.error("回测失败，请重试");
+        ElMessage.error(
+          error.response?.data?.message || "回测启动失败，请重试"
+        );
       } finally {
         loading.value = false;
       }

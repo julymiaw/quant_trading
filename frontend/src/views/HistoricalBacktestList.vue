@@ -47,7 +47,6 @@
         row-key="id"
         height="100%"
         :resizable="false">
-        <el-table-column prop="creator_name" label="回测发起者" width="120" />
         <el-table-column prop="strategy_name" label="策略名称" min-width="180">
           <template #default="scope">
             <el-link
@@ -58,6 +57,7 @@
             </el-link>
           </template>
         </el-table-column>
+        <el-table-column prop="creator_name" label="策略创建者" width="120" />
         <el-table-column prop="start_date" label="开始日期" width="140" />
         <el-table-column prop="end_date" label="结束日期" width="140" />
         <el-table-column
@@ -126,7 +126,7 @@
         <div v-if="selectedBacktest" class="report-header">
           <h3>{{ selectedBacktest.strategy_name }} - 回测报告</h3>
           <div class="report-meta">
-            <span>回测发起者：{{ selectedBacktest.creator_name }}</span>
+            <span>策略创建者：{{ selectedBacktest.creator_name }}</span>
             <span
               >时间范围：{{ selectedBacktest.start_date }} 至
               {{ selectedBacktest.end_date }}</span
@@ -180,7 +180,7 @@
 
 <script>
 import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { Search, Refresh } from "@element-plus/icons-vue";
 import axios from "axios";
@@ -196,6 +196,7 @@ export default {
   },
   setup() {
     const router = useRouter();
+    const route = useRoute();
     const loading = ref(false);
     const backtests = ref([]);
     const searchKeyword = ref("");
@@ -233,88 +234,36 @@ export default {
       }
     };
 
-    // 模拟获取回测数据
+    // 获取回测数据 - 从后端API获取真实数据
     const fetchBacktests = async () => {
       loading.value = true;
       try {
-        // 在实际项目中，这里应该调用后端API获取数据
-        // const response = await axios.get('/api/backtests', {
-        //   params: {
-        //     page: currentPage.value,
-        //     pageSize: pageSize.value,
-        //     keyword: searchKeyword.value,
-        //     timeRange: timeRange.value,
-        //     type: backtestType.value
-        //   }
-        // });
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-        // 模拟数据
-        const mockData = {
-          code: 200,
-          data: {
-            list: [
-              {
-                id: 1,
-                creator_name: "admin",
-                strategy_name: "均线交叉策略",
-                start_date: "2023-01-01",
-                end_date: "2023-12-31",
-                initial_capital: 100000,
-                commission_rate: 0.03,
-                slippage_rate: 0.05,
-                run_time: "2024-06-01T09:30:00",
-              },
-              {
-                id: 2,
-                creator_name: "user1",
-                strategy_name: "MACD动量策略",
-                start_date: "2023-06-01",
-                end_date: "2024-05-31",
-                initial_capital: 500000,
-                commission_rate: 0.03,
-                slippage_rate: 0.05,
-                run_time: "2024-06-02T14:15:00",
-              },
-              {
-                id: 3,
-                creator_name: "admin",
-                strategy_name: "布林带突破策略",
-                start_date: "2022-01-01",
-                end_date: "2023-12-31",
-                initial_capital: 200000,
-                commission_rate: 0.03,
-                slippage_rate: 0.05,
-                run_time: "2024-06-03T10:45:00",
-              },
-              {
-                id: 4,
-                creator_name: "user2",
-                strategy_name: "RSI超买超卖策略",
-                start_date: "2023-03-01",
-                end_date: "2024-02-29",
-                initial_capital: 150000,
-                commission_rate: 0.03,
-                slippage_rate: 0.05,
-                run_time: "2025-08-04T16:20:00",
-              },
-              {
-                id: 5,
-                creator_name: "admin",
-                strategy_name: "成交量异动策略",
-                start_date: "2023-09-01",
-                end_date: "2024-05-31",
-                initial_capital: 300000,
-                commission_rate: 0.03,
-                slippage_rate: 0.05,
-                run_time: "2024-06-05T09:00:00",
-              },
-            ],
-            total: 24,
+        // 构建查询参数
+        const queryParams = new URLSearchParams({
+          page: currentPage.value.toString(),
+          page_size: pageSize.value.toString(),
+        });
+
+        const response = await axios.get(`/api/backtests?${queryParams}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
           },
-        };
+        });
 
-        backtests.value = mockData.data.list;
-        total.value = mockData.data.total;
+        if (response.data.code === 200) {
+          backtests.value = response.data.data.list || [];
+          total.value = response.data.data.total || 0;
+        } else {
+          backtests.value = [];
+          total.value = 0;
+          ElMessage.error(response.data.message || "获取回测数据失败");
+        }
       } catch (error) {
         ElMessage.error("获取回测数据失败");
         console.error("获取回测数据失败:", error);
@@ -336,15 +285,68 @@ export default {
       );
     };
 
+    // 从API获取回测报告详情
+    const fetchBacktestReport = async (reportId) => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return null;
+        }
+
+        const response = await axios.get(`/api/backtest/report/${reportId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.data.success) {
+          return response.data.data;
+        } else {
+          ElMessage.error("获取回测报告失败");
+          return null;
+        }
+      } catch (error) {
+        console.error("获取回测报告失败:", error);
+        ElMessage.error("获取回测报告失败");
+        return null;
+      }
+    };
+
     // 查看回测报告
     const viewBacktestReport = async (backtest) => {
-      selectedBacktest.value = backtest;
-      reportDialogVisible.value = true;
+      // 如果传入的是 report_id 字符串，先获取完整报告数据
+      if (typeof backtest === "string") {
+        const reportData = await fetchBacktestReport(backtest);
+        if (reportData) {
+          selectedBacktest.value = reportData;
+          reportDialogVisible.value = true;
+        }
+      } else {
+        // 如果传入的是完整的backtest对象
+        selectedBacktest.value = backtest;
+        reportDialogVisible.value = true;
+      }
 
       // 等待弹窗渲染完成后，初始化图表
       await nextTick();
       // 实际项目中，这里应该初始化图表
       // initCharts();
+    };
+
+    // 处理来自消息通知的报告查看请求
+    const handleRouteQuery = async () => {
+      if (route.query.open_report) {
+        const reportId = route.query.open_report;
+        const strategyName = route.query.strategy_name;
+
+        // 延迟一段时间确保页面已加载
+        setTimeout(async () => {
+          await viewBacktestReport(reportId);
+          // 清除路由参数避免重复触发
+          router.replace({ name: "HistoricalBacktestList" });
+        }, 500);
+      }
     };
 
     // 处理报告弹窗关闭
@@ -416,6 +418,7 @@ export default {
 
     onMounted(() => {
       fetchBacktests();
+      handleRouteQuery(); // 处理路由参数
     });
 
     return {

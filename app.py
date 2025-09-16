@@ -3288,6 +3288,636 @@ def toggle_indicator_status(current_user, indicator_composite_id):
         return jsonify({"message": f"状态切换失败: {str(e)}"}), 500
 
 
+# =============================================
+# 消息管理相关API
+# =============================================
+
+
+# 获取消息列表API
+@app.route("/api/messages", methods=["GET"])
+@token_required
+def get_messages(current_user):
+    """获取用户消息列表接口"""
+    try:
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 10))
+        status_filter = request.args.get("status", "all")  # all, unread, read
+        message_type = request.args.get(
+            "message_type", "all"
+        )  # all, backtest_data_ready, etc.
+
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+            current_user_name = current_user["user_name"]
+
+            # 构建查询条件
+            where_conditions = ["user_name = %s"]
+            params = [current_user_name]
+
+            if status_filter != "all":
+                where_conditions.append("status = %s")
+                params.append(status_filter)
+
+            if message_type != "all":
+                where_conditions.append("message_type = %s")
+                params.append(message_type)
+
+            where_clause = " AND ".join(where_conditions)
+
+            # 获取总数
+            count_sql = f"SELECT COUNT(*) as total FROM Messages WHERE {where_clause}"
+            cursor.execute(count_sql, params)
+            total = cursor.fetchone()["total"]
+
+            # 获取分页数据
+            offset = (page - 1) * page_size
+            data_sql = f"""
+            SELECT message_id, message_type, title, content, link_url, link_params, 
+                   status, created_at, read_at
+            FROM Messages 
+            WHERE {where_clause}
+            ORDER BY created_at DESC 
+            LIMIT %s OFFSET %s
+            """
+            cursor.execute(data_sql, params + [page_size, offset])
+            messages = cursor.fetchall()
+
+            # 格式化消息内容（截取前50个字符）
+            for message in messages:
+                if len(message["content"]) > 50:
+                    message["content_preview"] = message["content"][:50] + "..."
+                else:
+                    message["content_preview"] = message["content"]
+
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "data": {
+                            "messages": messages,
+                            "total": total,
+                            "page": page,
+                            "page_size": page_size,
+                        },
+                    }
+                ),
+                200,
+            )
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"获取消息列表过程中发生错误: {str(e)}")
+        return jsonify({"message": f"获取消息列表失败: {str(e)}"}), 500
+
+
+# 标记消息为已读API
+@app.route("/api/messages/<message_id>/read", methods=["PUT"])
+@token_required
+def mark_message_read(current_user, message_id):
+    """标记消息为已读"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+            current_user_name = current_user["user_name"]
+
+            # 检查消息是否存在且属于当前用户
+            check_sql = (
+                "SELECT status FROM Messages WHERE message_id = %s AND user_name = %s"
+            )
+            cursor.execute(check_sql, (message_id, current_user_name))
+            message = cursor.fetchone()
+
+            if not message:
+                return jsonify({"message": "消息不存在"}), 404
+
+            # 如果已经是已读状态，直接返回
+            if message["status"] == "read":
+                return jsonify({"message": "消息已经是已读状态"}), 200
+
+            # 更新为已读
+            update_sql = "UPDATE Messages SET status = 'read', read_at = %s WHERE message_id = %s"
+            cursor.execute(update_sql, (datetime.now(), message_id))
+            connection.commit()
+
+            return jsonify({"message": "消息已标记为已读"}), 200
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"标记消息已读过程中发生错误: {str(e)}")
+        return jsonify({"message": f"标记消息已读失败: {str(e)}"}), 500
+
+
+# 删除消息API
+@app.route("/api/messages/<message_id>", methods=["DELETE"])
+@token_required
+def delete_message(current_user, message_id):
+    """删除消息"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+            current_user_name = current_user["user_name"]
+
+            # 检查消息是否存在且属于当前用户
+            check_sql = "SELECT message_id FROM Messages WHERE message_id = %s AND user_name = %s"
+            cursor.execute(check_sql, (message_id, current_user_name))
+            message = cursor.fetchone()
+
+            if not message:
+                return jsonify({"message": "消息不存在"}), 404
+
+            # 删除消息
+            delete_sql = "DELETE FROM Messages WHERE message_id = %s"
+            cursor.execute(delete_sql, (message_id,))
+            connection.commit()
+
+            return jsonify({"message": "消息已删除"}), 200
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"删除消息过程中发生错误: {str(e)}")
+        return jsonify({"message": f"删除消息失败: {str(e)}"}), 500
+
+
+# 创建消息的内部函数
+def create_message(
+    user_name, message_type, title, content, link_url=None, link_params=None
+):
+    """创建新消息（内部函数）"""
+    try:
+        import uuid
+
+        message_id = str(uuid.uuid4())
+
+        connection = get_db_connection()
+        if connection is None:
+            return False
+
+        try:
+            cursor = connection.cursor()
+
+            insert_sql = """
+            INSERT INTO Messages (message_id, user_name, message_type, title, content, 
+                                link_url, link_params, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'unread', %s)
+            """
+
+            cursor.execute(
+                insert_sql,
+                (
+                    message_id,
+                    user_name,
+                    message_type,
+                    title,
+                    content,
+                    link_url,
+                    json.dumps(link_params) if link_params else None,
+                    datetime.now(),
+                ),
+            )
+            connection.commit()
+
+            return True
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"创建消息失败: {str(e)}")
+        return False
+
+
+# =============================================
+# 回测相关API
+# =============================================
+
+
+# 启动回测任务API
+@app.route("/api/backtest/start", methods=["POST"])
+@token_required
+def start_backtest(current_user):
+    """启动回测任务"""
+    try:
+        data = request.get_json()
+        strategy_creator = data.get("strategy_creator")
+        strategy_name = data.get("strategy_name")
+        stock_code = data.get("stock_code")
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        initial_fund = data.get("initial_fund", 100000)
+
+        if not all([strategy_creator, strategy_name, stock_code, start_date, end_date]):
+            return jsonify({"message": "缺少必要参数"}), 400
+
+        current_user_name = current_user["user_name"]
+
+        # 启动异步回测任务
+        import threading
+        import time
+        import uuid
+
+        report_id = str(uuid.uuid4())
+
+        def backtest_task():
+            try:
+                # 第一阶段：数据准备（5秒）
+                time.sleep(5)
+
+                # 发送数据准备完成消息
+                create_message(
+                    user_name=current_user_name,
+                    message_type="backtest_data_ready",
+                    title=f"回测数据准备完成 - {strategy_name}",
+                    content=f"策略 '{strategy_name}' 针对股票 {stock_code} 的回测数据准备已完成，正在进行回测计算...",
+                )
+
+                # 第二阶段：回测计算（5秒）
+                time.sleep(5)
+
+                # 创建虚拟回测报告
+                connection = get_db_connection()
+                if connection:
+                    try:
+                        cursor = connection.cursor()
+
+                        # 生成模拟回测结果
+                        import random
+
+                        total_return = round(random.uniform(-0.3, 0.5), 4)
+                        annual_return = round(total_return * 365 / 100, 4)  # 简化计算
+                        max_drawdown = round(random.uniform(0.05, 0.25), 4)
+                        sharpe_ratio = round(random.uniform(0.5, 2.5), 4)
+                        win_rate = round(random.uniform(0.4, 0.7), 4)
+                        profit_loss_ratio = round(random.uniform(1.2, 3.0), 4)
+                        trade_count = random.randint(10, 100)
+                        final_fund = initial_fund * (1 + total_return)
+
+                        insert_report_sql = """
+                        INSERT INTO BacktestReport (
+                            report_id, creator_name, strategy_name, user_name, backtest_type,
+                            stock_code, start_date, end_date, initial_fund, final_fund,
+                            total_return, annual_return, max_drawdown, sharpe_ratio,
+                            win_rate, profit_loss_ratio, trade_count, report_status
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """
+
+                        cursor.execute(
+                            insert_report_sql,
+                            (
+                                report_id,
+                                strategy_creator,
+                                strategy_name,
+                                current_user_name,
+                                "STOCK",
+                                stock_code,
+                                start_date,
+                                end_date,
+                                initial_fund,
+                                final_fund,
+                                total_return,
+                                annual_return,
+                                max_drawdown,
+                                sharpe_ratio,
+                                win_rate,
+                                profit_loss_ratio,
+                                trade_count,
+                                "completed",
+                            ),
+                        )
+                        connection.commit()
+
+                    finally:
+                        connection.close()
+
+                # 发送回测完成消息
+                create_message(
+                    user_name=current_user_name,
+                    message_type="backtest_complete",
+                    title=f"回测完成 - {strategy_name}",
+                    content=f"策略 '{strategy_name}' 针对股票 {stock_code} 的回测已完成！总收益率: {total_return*100:.2f}%，点击查看详细报告。",
+                    link_url="/backtest-report",
+                    link_params={
+                        "report_id": report_id,
+                        "strategy_name": strategy_name,
+                    },
+                )
+
+            except Exception as e:
+                logger.error(f"回测任务执行失败: {str(e)}")
+                # 发送错误消息
+                create_message(
+                    user_name=current_user_name,
+                    message_type="error_alert",
+                    title=f"回测失败 - {strategy_name}",
+                    content=f"策略 '{strategy_name}' 的回测任务执行失败，请重试或联系管理员。错误信息: {str(e)}",
+                )
+
+        # 启动后台线程
+        thread = threading.Thread(target=backtest_task)
+        thread.daemon = True
+        thread.start()
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "message": "回测任务已启动，请稍后查看消息通知",
+                    "report_id": report_id,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logger.error(f"启动回测任务过程中发生错误: {str(e)}")
+        return jsonify({"message": f"启动回测任务失败: {str(e)}"}), 500
+
+
+# 获取回测报告详情API
+@app.route("/api/backtests", methods=["GET"])
+@token_required
+def get_backtest_list(current_user):
+    """获取当前用户的回测报告列表"""
+    try:
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 10))
+        offset = (page - 1) * page_size
+
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"code": 500, "message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+
+            # 查询当前用户的回测报告总数
+            count_sql = """
+            SELECT COUNT(*) FROM BacktestReport 
+            WHERE user_name = %s
+            """
+            cursor.execute(count_sql, (current_user["user_name"],))
+            total_result = cursor.fetchone()
+            total = total_result["COUNT(*)"] if total_result else 0
+
+            # 查询回测报告列表，按时间倒序
+            list_sql = """
+            SELECT report_id, creator_name, strategy_name, user_name, 
+                   backtest_type, stock_code, component_count,
+                   start_date, end_date, initial_fund, final_fund,
+                   total_return, annual_return, max_drawdown, sharpe_ratio,
+                   win_rate, profit_loss_ratio, trade_count,
+                   report_generate_time, report_status
+            FROM BacktestReport 
+            WHERE user_name = %s
+            ORDER BY report_generate_time DESC
+            LIMIT %s OFFSET %s
+            """
+            cursor.execute(list_sql, (current_user["user_name"], page_size, offset))
+            raw_reports = cursor.fetchall()
+
+            # 将数据库字段映射为前端期望的字段名
+            reports = []
+            for report in raw_reports:
+                try:
+                    mapped_report = {
+                        "report_id": report["report_id"] if report["report_id"] else "",
+                        "creator_name": (
+                            report["creator_name"] if report["creator_name"] else ""
+                        ),
+                        "strategy_name": (
+                            report["strategy_name"] if report["strategy_name"] else ""
+                        ),
+                        "user_name": report["user_name"] if report["user_name"] else "",
+                        "backtest_type": (
+                            report["backtest_type"]
+                            if report["backtest_type"]
+                            else "STOCK"
+                        ),
+                        "stock_code": (
+                            report["stock_code"] if report["stock_code"] else ""
+                        ),
+                        "component_count": (
+                            report["component_count"]
+                            if report["component_count"]
+                            else 0
+                        ),
+                        "start_date": (
+                            report["start_date"].strftime("%Y-%m-%d")
+                            if report["start_date"]
+                            else None
+                        ),
+                        "end_date": (
+                            report["end_date"].strftime("%Y-%m-%d")
+                            if report["end_date"]
+                            else None
+                        ),
+                        "initial_capital": (
+                            float(report["initial_fund"])
+                            if report["initial_fund"] is not None
+                            else 0
+                        ),
+                        "final_fund": (
+                            float(report["final_fund"])
+                            if report["final_fund"] is not None
+                            else 0
+                        ),
+                        "total_return": (
+                            float(report["total_return"])
+                            if report["total_return"] is not None
+                            else 0
+                        ),
+                        "annual_return": (
+                            float(report["annual_return"])
+                            if report["annual_return"] is not None
+                            else 0
+                        ),
+                        "max_drawdown": (
+                            float(report["max_drawdown"])
+                            if report["max_drawdown"] is not None
+                            else 0
+                        ),
+                        "sharpe_ratio": (
+                            float(report["sharpe_ratio"])
+                            if report["sharpe_ratio"] is not None
+                            else 0
+                        ),
+                        "win_rate": (
+                            float(report["win_rate"])
+                            if report["win_rate"] is not None
+                            else 0
+                        ),
+                        "profit_loss_ratio": (
+                            float(report["profit_loss_ratio"])
+                            if report["profit_loss_ratio"] is not None
+                            else 0
+                        ),
+                        "trade_count": (
+                            int(report["trade_count"])
+                            if report["trade_count"] is not None
+                            else 0
+                        ),
+                        "run_time": (
+                            report["report_generate_time"].strftime("%Y-%m-%d %H:%M:%S")
+                            if report["report_generate_time"]
+                            else None
+                        ),
+                        "report_status": (
+                            report["report_status"]
+                            if report["report_status"]
+                            else "unknown"
+                        ),
+                        "commission_rate": 0.03,
+                        "slippage_rate": 0.01,
+                    }
+                    reports.append(mapped_report)
+                except Exception as map_error:
+                    logger.error(f"映射回测记录失败: {str(map_error)}")
+                    continue
+
+            return (
+                jsonify(
+                    {
+                        "code": 200,
+                        "message": "获取成功",
+                        "data": {
+                            "list": reports,
+                            "total": total,
+                            "page": page,
+                            "page_size": page_size,
+                        },
+                    }
+                ),
+                200,
+            )
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"获取回测列表过程中发生错误: {str(e)}")
+        return jsonify({"code": 500, "message": f"获取回测列表失败: {str(e)}"}), 500
+
+
+@app.route("/api/backtests/simple", methods=["GET"])
+@token_required
+def get_backtest_list_simple(current_user):
+    """获取当前用户的回测报告列表 - 简化版本用于调试"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"code": 500, "message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+
+            # 简单查询，只获取基本字段
+            simple_sql = """
+            SELECT report_id, creator_name, strategy_name, user_name, 
+                   start_date, end_date, initial_fund, report_status, report_generate_time
+            FROM BacktestReport 
+            WHERE user_name = %s
+            ORDER BY report_generate_time DESC
+            LIMIT 10
+            """
+            cursor.execute(simple_sql, (current_user["user_name"],))
+            reports = cursor.fetchall()
+
+            # 简单映射 - 使用字典键名而不是索引
+            simple_reports = []
+            for report in reports:
+                simple_report = {
+                    "report_id": str(report["report_id"]),
+                    "creator_name": str(report["creator_name"]),
+                    "strategy_name": str(report["strategy_name"]),
+                    "user_name": str(report["user_name"]),
+                    "start_date": str(report["start_date"]),
+                    "end_date": str(report["end_date"]),
+                    "initial_capital": float(report["initial_fund"]),
+                    "report_status": str(report["report_status"]),
+                    "run_time": str(report["report_generate_time"]),
+                    "commission_rate": 0.03,
+                    "slippage_rate": 0.01,
+                }
+                simple_reports.append(simple_report)
+
+            return (
+                jsonify(
+                    {
+                        "code": 200,
+                        "message": "获取成功",
+                        "data": {
+                            "list": simple_reports,
+                            "total": len(simple_reports),
+                            "page": 1,
+                            "page_size": 10,
+                        },
+                    }
+                ),
+                200,
+            )
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        import traceback
+
+        error_msg = f"错误详情: {str(e)} | 用户: {current_user.get('user_name', 'Unknown')} | 堆栈: {traceback.format_exc()}"
+        logger.error(error_msg)
+        print(f"DEBUG: {error_msg}")  # 临时调试输出
+        return jsonify({"code": 500, "message": f"获取回测列表失败: {str(e)}"}), 500
+
+
+@app.route("/api/backtest/report/<report_id>", methods=["GET"])
+@token_required
+def get_backtest_report(current_user, report_id):
+    """获取回测报告详情"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+
+            # 获取回测报告
+            report_sql = """
+            SELECT * FROM BacktestReport 
+            WHERE report_id = %s
+            """
+            cursor.execute(report_sql, (report_id,))
+            report = cursor.fetchone()
+
+            if not report:
+                return jsonify({"message": "回测报告不存在"}), 404
+
+            return jsonify({"success": True, "data": report}), 200
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"获取回测报告过程中发生错误: {str(e)}")
+        return jsonify({"message": f"获取回测报告失败: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     # 注意：在生产环境中，请使用适当的WSGI服务器（如Gunicorn）运行，而不是使用Flask的开发服务器
     # 同时，应将debug设置为False

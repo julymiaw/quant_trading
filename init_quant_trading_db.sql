@@ -177,22 +177,25 @@ CREATE TABLE BacktestReport (
 -- =============================================
 -- 7. 创建系统日志表
 -- =============================================
-CREATE TABLE SystemLog (
-    log_id VARCHAR(50) NOT NULL COMMENT '日志唯一ID',
-    operator_name VARCHAR(50) COMMENT '操作用户（可为空，系统操作时为空）',
-    operator_role ENUM('admin', 'analyst', 'system') COMMENT '操作用户角色或系统',
-    operation_type ENUM('login', 'strategy_create', 'backtest', 'signal_generate', 'data_sync') NOT NULL COMMENT '操作类型',
-    operation_content TEXT NOT NULL COMMENT '操作内容描述',
-    operation_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
-    operation_result ENUM('success', 'failed', 'warning') NOT NULL COMMENT '操作结果',
-    error_info TEXT COMMENT '错误信息',
+CREATE TABLE Messages (
+    message_id VARCHAR(50) NOT NULL COMMENT '消息唯一ID',
+    user_name VARCHAR(50) NOT NULL COMMENT '接收消息的用户名',
+    message_type ENUM('backtest_data_ready', 'backtest_complete', 'system_notice', 'error_alert') NOT NULL COMMENT '消息类型',
+    title VARCHAR(200) NOT NULL COMMENT '消息标题',
+    content TEXT NOT NULL COMMENT '消息内容',
+    link_url VARCHAR(500) COMMENT '相关链接（如回测报告页面）',
+    link_params JSON COMMENT '链接参数（如report_id等）',
+    status ENUM('unread', 'read') NOT NULL DEFAULT 'unread' COMMENT '消息状态',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '消息创建时间',
+    read_at DATETIME COMMENT '消息阅读时间',
 
-    PRIMARY KEY (log_id),
-    INDEX idx_operator_time (operator_name, operation_time),
-    INDEX idx_operation_type (operation_type),
-    INDEX idx_operation_time (operation_time),
-    CONSTRAINT fk_log_operator FOREIGN KEY (operator_name) REFERENCES User(user_name) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
+    PRIMARY KEY (message_id),
+    INDEX idx_user_name (user_name),
+    INDEX idx_message_type (message_type),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at),
+    CONSTRAINT fk_message_user FOREIGN KEY (user_name) REFERENCES User(user_name) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户消息表';
 
 -- =============================================
 -- 8. 初始数据插入示例（按依赖顺序调整，去除冗余）

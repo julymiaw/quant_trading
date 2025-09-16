@@ -15,7 +15,9 @@
             <el-icon><Menu /></el-icon>
             <span>策略管理</span>
           </el-menu-item>
-          <el-menu-item index="/indicators" @click="$router.push('/indicators')">
+          <el-menu-item
+            index="/indicators"
+            @click="$router.push('/indicators')">
             <el-icon><DataAnalysis /></el-icon>
             <span>指标管理</span>
           </el-menu-item>
@@ -45,6 +47,9 @@
               <el-dropdown-item @click="showUserInfo"
                 >用户信息</el-dropdown-item
               >
+              <el-dropdown-item @click="goToMessageBox"
+                >消息箱</el-dropdown-item
+              >
               <el-dropdown-item divided @click="logout"
                 >退出登录</el-dropdown-item
               >
@@ -58,6 +63,9 @@
     <main class="main-content">
       <router-view />
     </main>
+
+    <!-- 消息通知组件 -->
+    <MessageNotification />
 
     <!-- 用户信息弹窗 -->
     <el-dialog
@@ -109,7 +117,9 @@ import {
   CaretBottom,
   User,
   Histogram,
+  Menu,
 } from "@element-plus/icons-vue";
+import MessageNotification from "./MessageNotification.vue";
 
 export default {
   name: "Layout",
@@ -119,6 +129,8 @@ export default {
     Setting,
     ArrowLeft,
     CaretBottom,
+    Menu,
+    MessageNotification,
     User,
     Histogram,
   },
@@ -204,6 +216,11 @@ export default {
       userInfoDialogVisible.value = false;
     };
 
+    // 跳转到消息箱
+    const goToMessageBox = () => {
+      router.push("/messages");
+    };
+
     // 退出登录
     const logout = async () => {
       try {
@@ -246,6 +263,7 @@ export default {
       goBack,
       showUserInfo,
       handleUserInfoDialogClose,
+      goToMessageBox,
       logout,
     };
   },
