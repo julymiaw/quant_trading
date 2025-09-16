@@ -3581,9 +3581,9 @@ def start_backtest(current_user):
                 preparer = DataPreparer("config.json")
                 strategy_fullname = f"{strategy_creator}.{strategy_name}"
 
-                # 调用数据准备模块
+                # 调用数据准备模块（作为模块使用，不生成CSV文件）
                 prepared_data = preparer.prepare_data(
-                    strategy_fullname, start_date, end_date
+                    strategy_fullname, start_date, end_date, save_files=False
                 )
 
                 # 发送数据准备完成消息

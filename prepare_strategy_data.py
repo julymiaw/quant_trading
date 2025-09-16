@@ -517,7 +517,11 @@ class DataPreparer:
                 self.node_values[node] = df
 
     def prepare_data(
-        self, strategy_fullname: str, start_date: str, end_date: str
+        self,
+        strategy_fullname: str,
+        start_date: str,
+        end_date: str,
+        save_files: bool = True,
     ) -> Dict:
         # 1. 解析策略名
         creator_name, strategy_name = strategy_fullname.split(".", 1)
@@ -593,20 +597,21 @@ class DataPreparer:
         else:
             big_df = pd.DataFrame()
 
-        # 9. 保存为csv/parquet
-        output_base = (
-            self.output_path if hasattr(self, "output_path") else "prepared_data"
-        )
-        big_df.to_csv(f"{output_base}_params.csv", index=False)
-        # big_df.to_parquet(f"{output_base}_params.parquet", index=False)
-
+        # 9. 根据save_files参数决定是否保存为csv文件
         benchmark_data_path = None
-        if benchmark_df is not None:
-            benchmark_data_path = f"{output_base}_benchmark.csv"
-            try:
-                benchmark_df.to_csv(benchmark_data_path, index=False)
-            except Exception as e:
-                print(f"警告：保存基准指数数据到 {benchmark_data_path} 失败: {e}")
+        if save_files:
+            output_base = (
+                self.output_path if hasattr(self, "output_path") else "prepared_data"
+            )
+            big_df.to_csv(f"{output_base}_params.csv", index=False)
+            # big_df.to_parquet(f"{output_base}_params.parquet", index=False)
+
+            if benchmark_df is not None:
+                benchmark_data_path = f"{output_base}_benchmark.csv"
+                try:
+                    benchmark_df.to_csv(benchmark_data_path, index=False)
+                except Exception as e:
+                    print(f"警告：保存基准指数数据到 {benchmark_data_path} 失败: {e}")
 
         result = {
             # 回测同学需要的核心信息
@@ -616,6 +621,7 @@ class DataPreparer:
             "param_columns": param_names,
             "select_func": strategy_info["select_func"],  # 选股函数
             "risk_control_func": strategy_info["risk_control_func"],  # 风控函数
+            "dataframe": big_df,  # 添加dataframe字段供回测引擎使用
             # 策略基本信息
             "strategy_info": {
                 "creator_name": creator_name,
@@ -629,6 +635,14 @@ class DataPreparer:
                 "strategy_desc": strategy_info["strategy_desc"],
             },
         }
+
+        # 如果保存了文件，则添加文件路径信息
+        if save_files:
+            output_base = (
+                self.output_path if hasattr(self, "output_path") else "prepared_data"
+            )
+            result["params_csv"] = f"{output_base}_params.csv"
+            result["benchmark_csv"] = benchmark_data_path
         return result
 
 
@@ -656,7 +670,7 @@ def main():
 
     preparer = DataPreparer(args.config)
     preparer.output_path = output_csv_prefix  # 用于csv/parquet等文件前缀
-    result = preparer.prepare_data(args.strategy, args.start, args.end)
+    result = preparer.prepare_data(args.strategy, args.start, args.end, save_files=True)
 
     # 转换所有Decimal类型为float，便于JSON序列化
     result_converted = convert_decimal_to_float(result)
