@@ -12,13 +12,26 @@ def create_dynamic_data_class(lines):
 
     return DynamicPandasData
 
+def risk_control_func(current_holdings, params, date, context=None):
+    sell_list = []
+    for stock in current_holdings:
+        if params[stock]["system.ema_60"] > params[stock]["system.close"]:
+            sell_list.append(stock)
+    return [h for h in current_holdings if h not in sell_list]
+
+def select_func(candidates, params, position_count, current_holdings, date, context=None):
+    stock = candidates[0]
+    close = params[stock]["system.close"]
+    ema_5 = params[stock]["system.ema_5"]
+    if close > 1.01 * ema_5:
+        return [stock]
+    elif close < ema_5:
+        return []
+    return current_holdings
+
 class TestStrategy(bt.Strategy):
     params = (
         ('printlog', False),
-        ('param_columns_map', {}),  # 映射字段名
-        ('param_columns', []),      # 原始字段名列表
-        ('select_func', None),
-        ('risk_control_func', None),
     )
 
     def log(self, txt, dt=None, doprint=False):
@@ -31,10 +44,6 @@ class TestStrategy(bt.Strategy):
         self.order = None
         self.val_start = self.broker.getvalue()
         self.comm_info = {}
-        self.param_map = self.params.param_columns_map
-        self.param_keys = self.params.param_columns
-        self.select_func = self.params.select_func
-        self.risk_control_func = self.params.risk_control_func
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -69,15 +78,11 @@ class TestStrategy(bt.Strategy):
         # 构建 params 字典
         for d in self.datas:
             stock = d._name
-            param_values = {}
-
-            for key in self.param_keys:
-                field_name = self.param_map.get(key, key).split('.')[-1]
-                param_values[key] = getattr(d, field_name, [None])[0]
-
-            # 默认加入收盘价
-            param_values["system.close"] = self.dataclose[stock][0]
-            params[stock] = param_values
+            params[stock] = {
+                "system.close": self.dataclose[stock][0],
+                "system.ema_5": getattr(d, 'ema_5', [None])[0],
+                "system.ema_60": getattr(d, 'ema_60', [None])[0],
+            }
 
             self.log(f'{stock}, Close, {params[stock]["system.close"]:.2f}')
             
@@ -86,7 +91,7 @@ class TestStrategy(bt.Strategy):
                 current_holdings.append(stock)
 
         # 风险控制：决定是否卖出
-        safe_holdings = self.risk_control_func(current_holdings, params, date)
+        safe_holdings = risk_control_func(current_holdings, params, date)
         for stock in current_holdings:
             if stock not in safe_holdings:
                 d = next(data for data in self.datas if data._name == stock)
@@ -95,7 +100,7 @@ class TestStrategy(bt.Strategy):
 
         # 选股逻辑：决定是否买入
         position_count = 1
-        selected_stocks = self.select_func(candidates, params, position_count, current_holdings, date)
+        selected_stocks = select_func(candidates, params, position_count, current_holdings, date)
 
         for stock in current_holdings:
             if stock not in selected_stocks:
@@ -124,34 +129,21 @@ class TestStrategy(bt.Strategy):
 
 if __name__ == '__main__':
     cerebro = bt.Cerebro()
+    cerebro.addstrategy(TestStrategy, printlog=True)
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     # 使用 system_双均线策略 的数据
-    # datapath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data_params.csv')
-    # jsonpath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data.json')  # json 文件路径
+    datapath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data_params.csv')
+    jsonpath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data.json')  # json 文件路径
 
     # 或者使用 system_MACD策略 的数据，取消注释以切换
-    datapath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data_params.csv')
-    jsonpath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data.json')  # json 文件路径
+    # datapath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data_params.csv')
+    # jsonpath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data.json')  # json 文件路径
 
     # 从 json 文件读取配置
     with open(jsonpath, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-
-        # 提取函数定义字符串
-        select_func_code = json_data.get('select_func', '')
-        risk_control_func_code = json_data.get('risk_control_func', '')
-
-        # 创建函数容器
-        local_funcs = {}
-        exec(select_func_code, {}, local_funcs)
-        exec(risk_control_func_code, {}, local_funcs)
-
-        # 提取函数对象
-        select_func = local_funcs.get('select_func')
-        risk_control_func = local_funcs.get('risk_control_func')
-
         param_columns = json_data['param_columns']
         param_columns_map = {col: col for col in param_columns}  # 默认映射
         # 允许在 json 中自定义列名映射，例如：{"system.close": "close_price"}
@@ -202,15 +194,6 @@ if __name__ == '__main__':
 
         data_feed = DynamicDataClass(**feed_kwargs)
         cerebro.adddata(data_feed)
-
-    cerebro.addstrategy(
-        TestStrategy,
-        printlog=True,
-        param_columns_map=param_columns_map,
-        param_columns=param_columns,
-        select_func=select_func,
-        risk_control_func=risk_control_func
-    )
 
     cerebro.broker.setcash(100000.0)
     cerebro.broker.setcommission(commission=0.001)

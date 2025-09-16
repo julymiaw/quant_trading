@@ -15,10 +15,6 @@ def create_dynamic_data_class(lines):
 class TestStrategy(bt.Strategy):
     params = (
         ('printlog', False),
-        ('param_columns_map', {}),  # 映射字段名
-        ('param_columns', []),      # 原始字段名列表
-        ('select_func', None),
-        ('risk_control_func', None),
     )
 
     def log(self, txt, dt=None, doprint=False):
@@ -31,10 +27,6 @@ class TestStrategy(bt.Strategy):
         self.order = None
         self.val_start = self.broker.getvalue()
         self.comm_info = {}
-        self.param_map = self.params.param_columns_map
-        self.param_keys = self.params.param_columns
-        self.select_func = self.params.select_func
-        self.risk_control_func = self.params.risk_control_func
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -58,62 +50,41 @@ class TestStrategy(bt.Strategy):
         self.order = None
 
     def next(self):
-        if self.order:
-            return
-
-        date = self.datas[0].datetime.date(0)
-        params = {}
+        # 记录所有符合买入条件的股票
+        buy_candidates = []
         candidates = []
-        current_holdings = []
 
-        # 构建 params 字典
         for d in self.datas:
-            stock = d._name
-            param_values = {}
+            self.log(f'{d._name}, Close, {self.dataclose[d._name][0]:.2f}')
 
-            for key in self.param_keys:
-                field_name = self.param_map.get(key, key).split('.')[-1]
-                param_values[key] = getattr(d, field_name, [None])[0]
+            if self.order:
+                return
 
-            # 默认加入收盘价
-            param_values["system.close"] = self.dataclose[stock][0]
-            params[stock] = param_values
-
-            self.log(f'{stock}, Close, {params[stock]["system.close"]:.2f}')
-            
-            candidates.append(stock)
+            # 风险控制卖出条件：ema_60 > close
             if self.getposition(d):
-                current_holdings.append(stock)
+                if d.ema_60[0] > self.dataclose[d._name][0]:
+                    self.log(f'SELL CREATE (Risk Control) {d._name}, {self.dataclose[d._name][0]:.2f}', doprint=True)
+                    self.order = self.order_target_percent(d, target=0.0)
+                    continue  # 卖出后，不再进行买入判断
 
-        # 风险控制：决定是否卖出
-        safe_holdings = self.risk_control_func(current_holdings, params, date)
-        for stock in current_holdings:
-            if stock not in safe_holdings:
-                d = next(data for data in self.datas if data._name == stock)
-                self.log(f'SELL CREATE (Risk Control) {stock}, {self.dataclose[stock][0]:.2f}', doprint=True)
-                self.order = self.order_target_percent(d, target=0)
+            # 原始的买入卖出条件
+            if not self.getposition(d):
+                if d.ema_5 and self.dataclose[d._name][0] > 1.01 * d.ema_5[0]:  # 放宽买入条件
+                    buy_candidates.append(d)
+            else:
+                if d.ema_5 and self.dataclose[d._name][0] < d.ema_5[0]:  # 放宽卖出条件
+                    self.log(f'SELL CREATE {d._name}, {self.dataclose[d._name][0]:.2f}', doprint=True)
+                    self.order = self.order_target_percent(d, target=0.0)
 
-        # 选股逻辑：决定是否买入
-        position_count = 1
-        selected_stocks = self.select_func(candidates, params, position_count, current_holdings, date)
-
-        for stock in current_holdings:
-            if stock not in selected_stocks:
-                d = next(data for data in self.datas if data._name == stock)
-                self.log(f'SELL CREATE {d._name}, {self.dataclose[d._name][0]:.2f}', doprint=True)
-                self.order = self.order_target_percent(d, target=0.0)
-
-        buy_candidates = [stock for stock in selected_stocks if stock not in current_holdings]
+        # 买入操作
         if buy_candidates:
             # 计算每只股票的分配资金
             cash_per_stock = self.broker.get_cash() / len(buy_candidates)
-            for stock in buy_candidates:
+            for d in buy_candidates:
                 # 计算买入的股数
-                d = next(data for data in self.datas if data._name == stock)
                 size = cash_per_stock / self.dataclose[d._name][0]
                 self.log(f'BUY CREATE {d._name}, {self.dataclose[d._name][0]:.2f}', doprint=True)
                 self.order = self.order_target_percent(d, target=0.99) # 留一些现金
-
 
     def stop(self):
         self.pnl = round(self.broker.getvalue() - self.val_start, 2)
@@ -124,34 +95,21 @@ class TestStrategy(bt.Strategy):
 
 if __name__ == '__main__':
     cerebro = bt.Cerebro()
+    cerebro.addstrategy(TestStrategy, printlog=True)
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     # 使用 system_双均线策略 的数据
-    # datapath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data_params.csv')
-    # jsonpath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data.json')  # json 文件路径
+    datapath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data_params.csv')
+    jsonpath = os.path.join(modpath, '..\data_prepared\system_双均线策略\prepared_data.json')  # json 文件路径
 
     # 或者使用 system_MACD策略 的数据，取消注释以切换
-    datapath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data_params.csv')
-    jsonpath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data.json')  # json 文件路径
+    # datapath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data_params.csv')
+    # jsonpath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data.json')  # json 文件路径
 
     # 从 json 文件读取配置
     with open(jsonpath, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-
-        # 提取函数定义字符串
-        select_func_code = json_data.get('select_func', '')
-        risk_control_func_code = json_data.get('risk_control_func', '')
-
-        # 创建函数容器
-        local_funcs = {}
-        exec(select_func_code, {}, local_funcs)
-        exec(risk_control_func_code, {}, local_funcs)
-
-        # 提取函数对象
-        select_func = local_funcs.get('select_func')
-        risk_control_func = local_funcs.get('risk_control_func')
-
         param_columns = json_data['param_columns']
         param_columns_map = {col: col for col in param_columns}  # 默认映射
         # 允许在 json 中自定义列名映射，例如：{"system.close": "close_price"}
@@ -203,15 +161,6 @@ if __name__ == '__main__':
         data_feed = DynamicDataClass(**feed_kwargs)
         cerebro.adddata(data_feed)
 
-    cerebro.addstrategy(
-        TestStrategy,
-        printlog=True,
-        param_columns_map=param_columns_map,
-        param_columns=param_columns,
-        select_func=select_func,
-        risk_control_func=risk_control_func
-    )
-
     cerebro.broker.setcash(100000.0)
     cerebro.broker.setcommission(commission=0.001)
     cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='returns')   # 时间回报率
@@ -232,10 +181,7 @@ if __name__ == '__main__':
 
     # 交易分析器
     trade_analyzer = strategy.analyzers.trade_analyzer.get_analysis()
-    won_total = trade_analyzer.get('won', {}).get('total', 0)
-    lost_total = trade_analyzer.get('lost', {}).get('total', 0)
-
-    print(f'盈利次数: {won_total}')
-    print(f'亏损次数: {lost_total}')
+    print('盈利次数: {}'.format(trade_analyzer['won']['total']))
+    print('亏损次数: {}'.format(trade_analyzer['lost']['total']))
 
     cerebro.plot(volume=False, iplot=False)
