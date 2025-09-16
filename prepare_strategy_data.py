@@ -636,11 +636,11 @@ class DataPreparer:
 def main():
     # ====== 临时代码：写死参数，便于调试 ======
     class Args:
-        strategy = "system.小市值策略"
+        # strategy = "system.小市值策略"
         # strategy = "system.双均线策略"
-        # strategy = "system.MACD策略"
-        start = "2025-08-01"
-        end = "2025-08-31"
+        strategy = "system.MACD策略"
+        start = "2024-01-01"
+        end = "2024-12-31"
         config = "config.json"
         output = None
 
