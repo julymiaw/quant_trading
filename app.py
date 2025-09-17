@@ -11,6 +11,7 @@ import os
 import re
 import logging
 import hashlib
+import pandas as pd
 from datetime import datetime, timedelta, timezone
 import uuid
 from functools import wraps
@@ -1010,46 +1011,42 @@ def handle_market_entity_suggestions(node_type: str, input_text: str) -> list:
     处理股票/指数/基准的智能补全，返回对象列表 {code, name}
     """
     try:
-        conn = pymysql.connect(
-            host="localhost",
-            port=3306,
-            user="root",
-            password=config["db_password"],
-            database="tushare_cache",
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-        )
-        cur = conn.cursor()
+        # 使用DataPreparer通过TushareCacheClient获取数据，避免直接连接数据库
+        preparer = DataPreparer("config.json")
         q = input_text.strip()
+
         if node_type == "股票":
-            if not q:
-                cur.execute("SELECT ts_code, name FROM stock_basic LIMIT 50")
+            # 获取股票基本信息
+            df = preparer.client.stock_basic()
+            if q:
+                # 过滤匹配的股票
+                mask = df["ts_code"].str.startswith(q, na=False) | df[
+                    "name"
+                ].str.contains(q, na=False)
+                df = df[mask].head(50)
             else:
-                like = f"{q}%"
-                cur.execute(
-                    "SELECT ts_code, name FROM stock_basic WHERE ts_code LIKE %s OR name LIKE %s LIMIT 50",
-                    (like, like),
-                )
+                df = df.head(50)
+            return [
+                {"ts_code": row["ts_code"], "name": row.get("name") or ""}
+                for _, row in df.iterrows()
+            ]
         else:
             # 指数或基准使用 index_basic
-            if not q:
-                cur.execute("SELECT ts_code, name FROM index_basic LIMIT 50")
+            df = preparer.client.index_basic()
+            if q:
+                # 过滤匹配的指数
+                mask = df["ts_code"].str.startswith(q, na=False) | df[
+                    "name"
+                ].str.contains(q, na=False)
+                df = df[mask].head(50)
             else:
-                like = f"{q}%"
-                cur.execute(
-                    "SELECT ts_code, name FROM index_basic WHERE ts_code LIKE %s OR name LIKE %s LIMIT 50",
-                    (like, like),
-                )
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return [{"ts_code": r["ts_code"], "name": r.get("name") or ""} for r in rows]
+                df = df.head(50)
+            return [
+                {"ts_code": row["ts_code"], "name": row.get("name") or ""}
+                for _, row in df.iterrows()
+            ]
     except Exception as e:
         logger.exception("查询市场实体建议失败")
-        try:
-            conn.close()
-        except:
-            pass
         return []
 
 
@@ -3615,11 +3612,17 @@ def start_backtest(current_user):
                 # 第三阶段：生成图表数据
                 logger.info(f"生成图表数据，策略: {strategy_creator}.{strategy_name}")
 
+                # 获取基准数据和基准名称（通过DataPreparer统一处理）
+                benchmark_data = preparer.get_benchmark_data()
+                benchmark_name = prepared_data.get("benchmark_name")
+
                 # 生成plotly图表的JSON数据
                 plotly_data = None
                 try:
                     plotly_data = backtest_engine.generate_plotly_json(
-                        f"{strategy_name}回测结果"
+                        f"{strategy_name}回测结果",
+                        benchmark_data=benchmark_data,
+                        benchmark_name=benchmark_name,
                     )
                     plotly_json_str = json.dumps(plotly_data)
                 except Exception as e:
@@ -3669,6 +3672,7 @@ def start_backtest(current_user):
                             max_drawdown = %s, sharpe_ratio = %s, win_rate = %s,
                             profit_loss_ratio = %s, trade_count = %s,
                             plotly_chart_data = %s,
+                            report_generate_time = NOW(),
                             report_status = 'completed'
                         WHERE report_id = %s
                     """,
@@ -3939,6 +3943,22 @@ def get_backtest_report(current_user, report_id):
 
             if not report:
                 return jsonify({"message": "回测报告不存在或无权限访问"}), 404
+
+            # 获取基准指数名称（通过DataPreparer统一处理）
+            benchmark_name = None
+            if report.get("benchmark_index"):
+                try:
+                    # 使用DataPreparer获取基准指数名称
+                    preparer = DataPreparer("config.json")
+                    benchmark_name = preparer.get_benchmark_name(
+                        report["benchmark_index"]
+                    )
+                except Exception as e:
+                    logger.warning(f"获取基准指数名称失败: {e}")
+                    benchmark_name = report["benchmark_index"]  # 使用代码作为备用
+
+            # 将基准名称添加到报告数据中
+            report["benchmark_name"] = benchmark_name or "沪深300"
 
             # 格式化日期字段
             if report.get("start_date"):

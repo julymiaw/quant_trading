@@ -144,25 +144,90 @@
         </div>
       </div>
 
-      <!-- 净值曲线图表 -->
-      <div class="chart-section">
-        <div class="chart-header">
-          <h3>回测净值曲线</h3>
-          <div class="chart-legend">
-            <span class="legend-item returns">
-              <span class="legend-color"></span>
-              资产价值
-            </span>
+      <!-- 聚宽风格的三张图表 -->
+      <div class="charts-section">
+        <!-- 收益图表 -->
+        <div class="chart-section">
+          <div class="chart-header">
+            <h3>收益</h3>
+            <div class="chart-legend">
+              <span class="legend-item strategy">
+                <span class="legend-color strategy-color"></span>
+                策略收益
+              </span>
+              <span class="legend-item benchmark">
+                <span class="legend-color benchmark-color"></span>
+                {{ reportData?.benchmark_name || "沪深300" }}
+              </span>
+              <span class="legend-item excess">
+                <span class="legend-color excess-color"></span>
+                超额收益
+              </span>
+            </div>
+          </div>
+          <div class="chart-container">
+            <div
+              v-if="reportData?.plotly_chart_data?.returns_chart"
+              id="returns-chart"
+              class="plotly-chart"></div>
+            <div v-else class="no-chart-placeholder">
+              <el-icon size="48"><PictureRounded /></el-icon>
+              <p>暂无收益图表数据</p>
+            </div>
           </div>
         </div>
-        <div class="chart-container">
-          <div
-            v-if="reportData.plotly_chart_data"
-            id="plotly-chart-report"
-            class="plotly-chart"></div>
-          <div v-else class="no-chart-placeholder">
-            <el-icon size="48"><PictureRounded /></el-icon>
-            <p>暂无图表数据</p>
+
+        <!-- 每日盈亏图表 -->
+        <div class="chart-section">
+          <div class="chart-header">
+            <h3>每日盈亏</h3>
+            <div class="chart-legend">
+              <span class="legend-item profit">
+                <span class="legend-color profit-color"></span>
+                当日盈利
+              </span>
+              <span class="legend-item loss">
+                <span class="legend-color loss-color"></span>
+                当日亏损
+              </span>
+            </div>
+          </div>
+          <div class="chart-container">
+            <div
+              v-if="reportData?.plotly_chart_data?.daily_pnl_chart"
+              id="daily-pnl-chart"
+              class="plotly-chart"></div>
+            <div v-else class="no-chart-placeholder">
+              <el-icon size="48"><PictureRounded /></el-icon>
+              <p>暂无盈亏图表数据</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 每日买卖图表 -->
+        <div class="chart-section">
+          <div class="chart-header">
+            <h3>每日买卖</h3>
+            <div class="chart-legend">
+              <span class="legend-item open">
+                <span class="legend-color open-color"></span>
+                当日开仓
+              </span>
+              <span class="legend-item close">
+                <span class="legend-color close-color"></span>
+                当日平仓
+              </span>
+            </div>
+          </div>
+          <div class="chart-container">
+            <div
+              v-if="reportData?.plotly_chart_data?.daily_trades_chart"
+              id="daily-trades-chart"
+              class="plotly-chart"></div>
+            <div v-else class="no-chart-placeholder">
+              <el-icon size="48"><PictureRounded /></el-icon>
+              <p>暂无交易图表数据</p>
+            </div>
           </div>
         </div>
       </div>
@@ -276,59 +341,108 @@ export default {
         return;
       }
 
-      // 等待DOM元素准备就绪，最多等待3秒
-      let chartDiv = null;
-      let attempts = 0;
-      const maxAttempts = 30; // 3秒，每100ms检查一次
+      const chartData = reportData.value.plotly_chart_data;
+      console.log("图表数据:", chartData);
 
-      while (!chartDiv && attempts < maxAttempts) {
-        chartDiv = document.getElementById("plotly-chart-report");
-        if (!chartDiv) {
+      // 通用的图表配置
+      const commonConfig = {
+        responsive: true,
+        displayModeBar: true,
+        modeBarButtonsToRemove: ["pan2d", "lasso2d", "autoScale2d", "select2d"],
+        displaylogo: false,
+      };
+
+      const commonLayoutUpdate = {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        font: {
+          family:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          size: 12,
+          color: "#333",
+        },
+        margin: { t: 40, r: 40, b: 40, l: 80 },
+      };
+
+      // 渲染收益图表
+      if (chartData.returns_chart) {
+        const returnsDiv = await waitForElement("returns-chart");
+        if (returnsDiv) {
+          try {
+            await PlotlyLib.newPlot(
+              returnsDiv,
+              chartData.returns_chart.data,
+              {
+                ...chartData.returns_chart.layout,
+                ...commonLayoutUpdate,
+              },
+              commonConfig
+            );
+            console.log("收益图表渲染成功");
+          } catch (error) {
+            console.error("渲染收益图表失败:", error);
+          }
+        }
+      }
+
+      // 渲染每日盈亏图表
+      if (chartData.daily_pnl_chart) {
+        const pnlDiv = await waitForElement("daily-pnl-chart");
+        if (pnlDiv) {
+          try {
+            await PlotlyLib.newPlot(
+              pnlDiv,
+              chartData.daily_pnl_chart.data,
+              {
+                ...chartData.daily_pnl_chart.layout,
+                ...commonLayoutUpdate,
+              },
+              commonConfig
+            );
+            console.log("盈亏图表渲染成功");
+          } catch (error) {
+            console.error("渲染盈亏图表失败:", error);
+          }
+        }
+      }
+
+      // 渲染每日买卖图表
+      if (chartData.daily_trades_chart) {
+        const tradesDiv = await waitForElement("daily-trades-chart");
+        if (tradesDiv) {
+          try {
+            await PlotlyLib.newPlot(
+              tradesDiv,
+              chartData.daily_trades_chart.data,
+              {
+                ...chartData.daily_trades_chart.layout,
+                ...commonLayoutUpdate,
+              },
+              commonConfig
+            );
+            console.log("交易图表渲染成功");
+          } catch (error) {
+            console.error("渲染交易图表失败:", error);
+          }
+        }
+      }
+    };
+
+    // 等待DOM元素准备就绪的辅助函数
+    const waitForElement = async (elementId, maxAttempts = 30) => {
+      let element = null;
+      let attempts = 0;
+
+      while (!element && attempts < maxAttempts) {
+        element = document.getElementById(elementId);
+        if (!element) {
           await new Promise((resolve) => setTimeout(resolve, 100));
           attempts++;
         }
       }
 
-      console.log("图表容器元素:", chartDiv, "尝试次数:", attempts);
-      if (!chartDiv) {
-        console.log("找不到图表容器元素，已超时");
-        return;
-      }
-
-      try {
-        const chartData = reportData.value.plotly_chart_data;
-        console.log("图表数据:", chartData);
-        await PlotlyLib.newPlot(
-          chartDiv,
-          chartData.data,
-          {
-            ...chartData.layout,
-            paper_bgcolor: "rgba(0,0,0,0)",
-            plot_bgcolor: "rgba(0,0,0,0)",
-            font: {
-              family:
-                '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-              size: 12,
-              color: "#333",
-            },
-            margin: { t: 40, r: 40, b: 60, l: 80 },
-          },
-          {
-            responsive: true,
-            displayModeBar: true,
-            modeBarButtonsToRemove: [
-              "pan2d",
-              "lasso2d",
-              "autoScale2d",
-              "select2d",
-            ],
-            displaylogo: false,
-          }
-        );
-        console.log("图表渲染成功");
-      } catch (error) {
-        console.error("渲染图表失败:", error);
-      }
+      console.log(`元素 ${elementId}:`, element, "尝试次数:", attempts);
+      return element;
     };
 
     // 格式化函数
@@ -551,6 +665,12 @@ export default {
   color: #f56c6c;
 }
 
+.charts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .chart-section {
   background: white;
   border-radius: 8px;
@@ -559,7 +679,7 @@ export default {
 }
 
 .chart-header {
-  padding: 20px 24px;
+  padding: 16px 20px;
   border-bottom: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-between;
@@ -576,30 +696,59 @@ export default {
 .chart-legend {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 13px;
   color: #606266;
 }
 
-.legend-item.returns .legend-color {
-  width: 12px;
-  height: 12px;
-  background: #409eff;
+.legend-color {
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
   margin-right: 6px;
 }
 
+/* 图例颜色配置 */
+.strategy-color {
+  background: #4572a7;
+}
+
+.benchmark-color {
+  background: #aa4643;
+}
+
+.excess-color {
+  background: #89a54e;
+}
+
+.profit-color {
+  background: #89a54e;
+}
+
+.loss-color {
+  background: #80699b;
+}
+
+.open-color {
+  background: #18a5ca;
+}
+
+.close-color {
+  background: #db843d;
+}
+
 .chart-container {
-  padding: 24px;
+  padding: 16px 20px 20px 20px;
 }
 
 .plotly-chart {
   width: 100%;
-  height: 500px;
+  height: 300px;
 }
 
 .no-chart-placeholder {
@@ -607,7 +756,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 400px;
+  height: 250px;
   color: #999;
   background: #fafafa;
   border-radius: 8px;
