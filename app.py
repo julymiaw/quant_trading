@@ -3672,6 +3672,7 @@ def start_backtest(current_user):
                             max_drawdown = %s, sharpe_ratio = %s, win_rate = %s,
                             profit_loss_ratio = %s, trade_count = %s,
                             plotly_chart_data = %s,
+                            report_generate_time = NOW(),
                             report_status = 'completed'
                         WHERE report_id = %s
                     """,

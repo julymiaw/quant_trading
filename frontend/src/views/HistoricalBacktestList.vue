@@ -53,22 +53,22 @@
         <el-table-column prop="creator_name" label="策略创建者" width="120" />
         <el-table-column prop="start_date" label="开始日期" width="140" />
         <el-table-column prop="end_date" label="结束日期" width="140" />
-        <el-table-column
-          prop="initial_capital"
-          label="初始资金(元)"
-          width="120">
+        <el-table-column prop="initial_fund" label="初始资金(元)" width="120">
           <template #default="scope">
             {{
-              scope.row.initial_capital
-                ? Number(scope.row.initial_capital).toLocaleString()
+              scope.row.initial_fund
+                ? Number(scope.row.initial_fund).toLocaleString()
                 : "-"
             }}
           </template>
         </el-table-column>
 
-        <el-table-column prop="run_time" label="发起时间" width="180">
+        <el-table-column
+          prop="report_generate_time"
+          label="完成时间"
+          width="180">
           <template #default="scope">
-            {{ formatStartTime(scope.row.run_time) }}
+            {{ formatStartTime(scope.row.report_generate_time) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -380,8 +380,8 @@ export default {
         }
 
         filtered = filtered.filter((item) => {
-          if (!item.run_time) return false;
-          const itemDate = new Date(item.run_time);
+          if (!item.report_generate_time) return false;
+          const itemDate = new Date(item.report_generate_time);
           return itemDate >= startDate && itemDate <= now;
         });
       }
