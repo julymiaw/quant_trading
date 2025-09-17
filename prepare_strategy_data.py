@@ -121,6 +121,8 @@ class DataPreparer:
             if not row:
                 raise ValueError(f"未找到策略 {creator_name}.{strategy_name}")
             strategy_info = {
+                "creator_name": creator_name,
+                "strategy_name": strategy_name,
                 "scope_type": row[0],
                 "scope_id": row[1],
                 "benchmark_index": row[2],
@@ -598,43 +600,64 @@ class DataPreparer:
             big_df = pd.DataFrame()
 
         # 9. 根据save_files参数决定是否保存为csv文件
-        benchmark_data_path = None
         if save_files:
             output_base = (
                 self.output_path if hasattr(self, "output_path") else "prepared_data"
             )
             big_df.to_csv(f"{output_base}_params.csv", index=False)
-            # big_df.to_parquet(f"{output_base}_params.parquet", index=False)
 
             if benchmark_df is not None:
-                benchmark_data_path = f"{output_base}_benchmark.csv"
                 try:
-                    benchmark_df.to_csv(benchmark_data_path, index=False)
+                    benchmark_df.to_csv(f"{output_base}_benchmark.csv", index=False)
                 except Exception as e:
-                    print(f"警告：保存基准指数数据到 {benchmark_data_path} 失败: {e}")
+                    print(f"警告：保存基准指数数据失败: {e}")
+
+        # 保存基准数据到类属性中，供后续直接访问（避免JSON序列化问题）
+        self._benchmark_data = benchmark_df
+
+        # 获取基准指数名称
+        benchmark_name = None
+        if benchmark_index:
+            benchmark_name = self.get_benchmark_name(benchmark_index)
 
         result = {
-            # 回测同学需要的核心信息
+            # 回测核心信息
             "stock_list": stock_list,
-            "backtest_start_date": start_date_corr,  # 纠正后的回测开始日期
-            "backtest_end_date": end_date_corr,  # 纠正后的回测结束日期
+            "backtest_start_date": start_date_corr,
+            "backtest_end_date": end_date_corr,
             "param_columns": param_names,
-            "select_func": strategy_info["select_func"],  # 选股函数
-            "risk_control_func": strategy_info["risk_control_func"],  # 风控函数
-            # 策略基本信息
-            "strategy_info": {
-                "creator_name": creator_name,
-                "strategy_name": strategy_name,
-                "scope_type": strategy_info["scope_type"],
-                "scope_id": strategy_info["scope_id"],
-                "position_count": strategy_info["position_count"],
-                "rebalance_interval": strategy_info["rebalance_interval"],
-                "buy_fee_rate": strategy_info["buy_fee_rate"],
-                "sell_fee_rate": strategy_info["sell_fee_rate"],
-                "strategy_desc": strategy_info["strategy_desc"],
-            },
+            "select_func": strategy_info["select_func"],
+            "risk_control_func": strategy_info["risk_control_func"],
+            # 基准信息
+            "benchmark_name": benchmark_name,
+            # DataFrame数据（内存传递，不序列化为JSON）
+            "dataframe": big_df,
+            # 策略基本信息（已包含creator_name和strategy_name）
+            "strategy_info": strategy_info,
         }
         return result
+
+    def get_benchmark_data(self):
+        """获取最后一次准备的基准数据"""
+        return getattr(self, "_benchmark_data", None)
+
+    def get_benchmark_name(self, benchmark_index: str) -> str:
+        """获取基准指数的中文名称"""
+        if not benchmark_index:
+            return None
+        try:
+            # 通过TushareCacheClient获取指数基本信息
+            df = self.client.index_basic()
+            # 查找匹配的指数代码
+            matched_df = df[df["ts_code"] == benchmark_index]
+            if not matched_df.empty:
+                return matched_df.iloc[0]["name"]
+            else:
+                # 如果数据库中没有，返回指数代码本身
+                return benchmark_index
+        except Exception as e:
+            print(f"警告：获取基准指数名称失败: {e}")
+            return benchmark_index
 
 
 # ========== 3. 主入口 ==========
@@ -664,9 +687,12 @@ def main():
     result = preparer.prepare_data(args.strategy, args.start, args.end, save_files=True)
 
     # 转换所有Decimal类型为float，便于JSON序列化
-    result_converted = convert_decimal_to_float(result)
+    # 但排除DataFrame对象（它们不能被序列化）
+    result_for_json = result.copy()
+    result_for_json.pop("dataframe", None)  # 移除DataFrame，避免序列化错误
+    result_converted = convert_decimal_to_float(result_for_json)
 
-    # 保存回测所需信息到json
+    # 保存回测所需信息到json（不包含DataFrame）
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(result_converted, f, ensure_ascii=False, indent=2)
 
