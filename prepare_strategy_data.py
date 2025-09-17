@@ -621,7 +621,6 @@ class DataPreparer:
             "param_columns": param_names,
             "select_func": strategy_info["select_func"],  # 选股函数
             "risk_control_func": strategy_info["risk_control_func"],  # 风控函数
-            "dataframe": big_df,  # 添加dataframe字段供回测引擎使用
             # 策略基本信息
             "strategy_info": {
                 "creator_name": creator_name,
@@ -635,14 +634,6 @@ class DataPreparer:
                 "strategy_desc": strategy_info["strategy_desc"],
             },
         }
-
-        # 如果保存了文件，则添加文件路径信息
-        if save_files:
-            output_base = (
-                self.output_path if hasattr(self, "output_path") else "prepared_data"
-            )
-            result["params_csv"] = f"{output_base}_params.csv"
-            result["benchmark_csv"] = benchmark_data_path
         return result
 
 
@@ -650,11 +641,11 @@ class DataPreparer:
 def main():
     # ====== 临时代码：写死参数，便于调试 ======
     class Args:
-        # strategy = "system.小市值策略"
+        strategy = "system.小市值策略"
         # strategy = "system.双均线策略"
-        strategy = "system.MACD策略"
-        start = "2024-01-01"
-        end = "2024-12-31"
+        # strategy = "system.MACD策略"
+        start = "2025-08-01"
+        end = "2025-09-01"
         config = "config.json"
         output = None
 
