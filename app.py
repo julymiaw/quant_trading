@@ -3970,6 +3970,56 @@ def get_backtest_report(current_user, report_id):
         return jsonify({"message": f"获取回测报告失败: {str(e)}"}), 500
 
 
+@app.route("/api/backtest/report/<report_id>", methods=["DELETE"])
+@token_required
+def delete_backtest_report(current_user, report_id):
+    """删除回测报告"""
+    try:
+        connection = get_db_connection()
+        if connection is None:
+            return jsonify({"code": 500, "message": "数据库连接失败"}), 500
+
+        try:
+            cursor = connection.cursor()
+
+            # 首先检查报告是否存在并属于当前用户
+            check_sql = """
+            SELECT report_id FROM BacktestReport 
+            WHERE report_id = %s AND user_name = %s
+            """
+            cursor.execute(check_sql, (report_id, current_user["user_name"]))
+            existing_report = cursor.fetchone()
+
+            if not existing_report:
+                return (
+                    jsonify({"code": 404, "message": "回测报告不存在或无权限删除"}),
+                    404,
+                )
+
+            # 删除回测报告
+            delete_sql = """
+            DELETE FROM BacktestReport 
+            WHERE report_id = %s AND user_name = %s
+            """
+            cursor.execute(delete_sql, (report_id, current_user["user_name"]))
+            connection.commit()
+
+            if cursor.rowcount > 0:
+                logger.info(
+                    f"用户 {current_user['user_name']} 删除了回测报告 {report_id}"
+                )
+                return jsonify({"code": 200, "message": "回测报告删除成功"}), 200
+            else:
+                return jsonify({"code": 404, "message": "回测报告不存在"}), 404
+
+        finally:
+            connection.close()
+
+    except Exception as e:
+        logger.error(f"删除回测报告过程中发生错误: {str(e)}")
+        return jsonify({"code": 500, "message": f"删除回测报告失败: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     # 注意：在生产环境中，请使用适当的WSGI服务器（如Gunicorn）运行，而不是使用Flask的开发服务器
     # 同时，应将debug设置为False

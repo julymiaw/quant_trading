@@ -4,13 +4,6 @@
     <div class="page-header">
       <h1>历史回测</h1>
       <div class="header-actions">
-        <el-select
-          v-model="backtestType"
-          placeholder="选择回测类型"
-          style="width: 150px; margin-right: 10px">
-          <el-option label="我的回测" value="my" />
-          <el-option label="全部回测" value="all" />
-        </el-select>
         <el-button type="primary" @click="refreshBacktests">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -78,13 +71,20 @@
             {{ formatStartTime(scope.row.run_time) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="scope">
             <el-button
               type="primary"
               size="small"
               @click="viewBacktestReport(scope.row)">
               查看报告
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="deleteBacktestReport(scope.row)"
+              style="margin-left: 8px">
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -265,7 +265,7 @@
 <script>
 import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Refresh, PictureRounded } from "@element-plus/icons-vue";
 import axios from "axios";
 
@@ -300,7 +300,6 @@ export default {
     const backtests = ref([]);
     const searchKeyword = ref("");
     const timeRange = ref("all");
-    const backtestType = ref("my");
     const currentPage = ref(1);
     const pageSize = ref(10);
     const total = ref(0);
@@ -569,6 +568,54 @@ export default {
       }
     };
 
+    // 删除回测报告
+    const deleteBacktestReport = async (backtest) => {
+      try {
+        const confirmResult = await ElMessageBox.confirm(
+          `确定要删除回测报告 "${backtest.strategy_name}" 吗？此操作不可撤销。`,
+          "删除确认",
+          {
+            confirmButtonText: "确定删除",
+            cancelButtonText: "取消",
+            type: "warning",
+            confirmButtonClass: "el-button--danger",
+          }
+        );
+
+        if (confirmResult === "confirm") {
+          const token = localStorage.getItem("token");
+          if (!token) {
+            ElMessage.error("请先登录");
+            return;
+          }
+
+          const response = await axios.delete(
+            `/api/backtest/report/${backtest.report_id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (response.data.code === 200) {
+            ElMessage.success("回测报告删除成功");
+            // 刷新列表
+            fetchBacktests();
+          } else {
+            ElMessage.error(response.data.message || "删除失败");
+          }
+        }
+      } catch (error) {
+        if (error === "cancel") {
+          // 用户取消删除，不显示错误信息
+          return;
+        }
+        console.error("删除回测报告失败:", error);
+        ElMessage.error("删除回测报告失败");
+      }
+    };
+
     // 处理报告弹窗关闭
     const handleReportDialogClose = async () => {
       // 销毁Plotly图表实例
@@ -656,7 +703,6 @@ export default {
       backtests,
       searchKeyword,
       timeRange,
-      backtestType,
       currentPage,
       pageSize,
       total,
@@ -668,6 +714,7 @@ export default {
       refreshBacktests,
       goToStrategyDetail,
       viewBacktestReport,
+      deleteBacktestReport,
       handleReportDialogClose,
       handleSizeChange,
       handleCurrentChange,
