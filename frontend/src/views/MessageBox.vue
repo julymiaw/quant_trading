@@ -421,35 +421,54 @@ export default {
 
     // 处理消息链接
     const handleMessageLink = (message) => {
-      if (message.link_url && message.link_params) {
+      if (message.link_url) {
         try {
-          // 调试信息
-          console.log("link_params type:", typeof message.link_params);
-          console.log("link_params value:", message.link_params);
+          console.log("处理消息链接:", message.link_url, message.link_params);
 
-          let params;
-          if (typeof message.link_params === "string") {
-            params = JSON.parse(message.link_params);
-          } else {
-            // 如果已经是对象，直接使用
-            params = message.link_params;
-          }
+          // 检查是否是回测报告链接
+          if (message.link_url.startsWith("/backtest/report/")) {
+            // 从URL中提取报告ID
+            const reportId = message.link_url.split("/").pop();
+            console.log("提取到报告ID:", reportId);
 
-          if (message.link_url === "/backtests") {
-            // 跳转到回测报告页面
+            // 跳转到回测报告详情页面
             router.push({
-              name: "HistoricalBacktestList",
-              query: {
-                open_report: params.report_id,
-                strategy_name: params.strategy_name,
-              },
+              path: `/backtest/report/${reportId}`,
             });
+          } else if (message.link_url === "/backtests") {
+            // 处理其他类型的链接（如果有link_params）
+            let params;
+            if (message.link_params) {
+              if (typeof message.link_params === "string") {
+                params = JSON.parse(message.link_params);
+              } else {
+                params = message.link_params;
+              }
+
+              // 跳转到回测历史列表页面
+              router.push({
+                name: "HistoricalBacktestList",
+                query: {
+                  open_report: params.report_id,
+                  strategy_name: params.strategy_name,
+                },
+              });
+            } else {
+              // 直接跳转到回测历史列表
+              router.push({ name: "HistoricalBacktestList" });
+            }
+          } else {
+            // 处理其他类型的链接
+            router.push(message.link_url);
           }
+
           messageDetailVisible.value = false;
         } catch (e) {
-          console.error("解析链接参数失败:", e);
-          ElMessage.error("链接参数错误");
+          console.error("处理链接失败:", e);
+          ElMessage.error("链接处理失败");
         }
+      } else {
+        ElMessage.warning("该消息没有关联链接");
       }
     };
 
