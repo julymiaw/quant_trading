@@ -102,196 +102,21 @@
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange" />
     </div>
-
-    <!-- 回测报告弹窗 -->
-    <el-dialog
-      title="回测报告"
-      v-model="reportDialogVisible"
-      width="90%"
-      height="90vh"
-      append-to-body
-      :before-close="handleReportDialogClose">
-      <div class="backtest-report-content">
-        <div v-if="selectedBacktest" class="report-header">
-          <h3>{{ selectedBacktest.strategy_name }} - 回测报告</h3>
-          <div class="report-meta">
-            <span>策略创建者：{{ selectedBacktest.creator_name }}</span>
-            <span
-              >时间范围：{{ selectedBacktest.start_date }} 至
-              {{ selectedBacktest.end_date }}</span
-            >
-            <span
-              >初始资金：{{
-                selectedBacktest?.initial_fund !== null &&
-                selectedBacktest?.initial_fund !== undefined &&
-                !isNaN(selectedBacktest.initial_fund)
-                  ? selectedBacktest.initial_fund.toLocaleString()
-                  : "--"
-              }}元</span
-            >
-          </div>
-        </div>
-        <div class="report-charts">
-          <!-- 显示真实的回测图表 -->
-          <div class="chart-container">
-            <h4>回测净值曲线</h4>
-            <div class="chart">
-              <!-- 显示plotly交互式图表 -->
-              <div
-                v-if="selectedBacktest?.plotly_chart_data"
-                id="plotly-chart"
-                style="width: 100%; height: 500px"></div>
-              <!-- 没有图表数据时的占位符 -->
-              <div v-else class="no-chart-placeholder">
-                <el-icon size="48"><PictureRounded /></el-icon>
-                <p>暂无图表数据</p>
-              </div>
-            </div>
-          </div>
-          <div class="chart-container">
-            <h4>回测结果统计</h4>
-            <div class="stats-grid">
-              <div class="stat-item">
-                <span class="stat-label">总收益率</span>
-                <span
-                  :class="[
-                    'stat-value',
-                    (selectedBacktest?.total_return || 0) >= 0
-                      ? 'positive'
-                      : 'negative',
-                  ]">
-                  {{
-                    selectedBacktest?.total_return
-                      ? (selectedBacktest.total_return * 100).toFixed(2) + "%"
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">年化收益率</span>
-                <span
-                  :class="[
-                    'stat-value',
-                    (selectedBacktest?.annual_return || 0) >= 0
-                      ? 'positive'
-                      : 'negative',
-                  ]">
-                  {{
-                    selectedBacktest?.annual_return
-                      ? (selectedBacktest.annual_return * 100).toFixed(2) + "%"
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">最大回撤</span>
-                <span class="stat-value negative">
-                  {{
-                    selectedBacktest?.max_drawdown
-                      ? (selectedBacktest.max_drawdown * 100).toFixed(2) + "%"
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Sharpe比率</span>
-                <span class="stat-value">
-                  {{
-                    selectedBacktest?.sharpe_ratio
-                      ? selectedBacktest.sharpe_ratio.toFixed(4)
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">胜率</span>
-                <span
-                  :class="[
-                    'stat-value',
-                    (selectedBacktest?.win_rate || 0) >= 0.5
-                      ? 'positive'
-                      : 'negative',
-                  ]">
-                  {{
-                    selectedBacktest?.win_rate
-                      ? (selectedBacktest.win_rate * 100).toFixed(1) + "%"
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">交易次数</span>
-                <span class="stat-value">
-                  {{ selectedBacktest?.trade_count || "--" }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">初始资金</span>
-                <span class="stat-value">
-                  {{
-                    selectedBacktest?.initial_fund
-                      ? Number(selectedBacktest.initial_fund).toLocaleString() +
-                        "元"
-                      : "--"
-                  }}
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">最终资金</span>
-                <span
-                  :class="[
-                    'stat-value',
-                    (selectedBacktest?.final_fund || 0) >=
-                    (selectedBacktest?.initial_fund || 0)
-                      ? 'positive'
-                      : 'negative',
-                  ]">
-                  {{
-                    selectedBacktest?.final_fund
-                      ? Number(selectedBacktest.final_fund).toLocaleString() +
-                        "元"
-                      : "--"
-                  }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Search, Refresh, PictureRounded } from "@element-plus/icons-vue";
+import { Search, Refresh } from "@element-plus/icons-vue";
 import axios from "axios";
-
-// 动态导入Plotly用于渲染交互式图表
-let Plotly = null;
-const loadPlotly = async () => {
-  if (!Plotly) {
-    try {
-      console.log("正在加载Plotly库...");
-      Plotly = await import("plotly.js-dist");
-      console.log("Plotly库加载成功", Plotly);
-    } catch (error) {
-      console.error("Plotly库加载失败:", error);
-      console.warn("Plotly未安装，将无法显示交互式图表");
-      return null;
-    }
-  }
-  return Plotly;
-};
 
 export default {
   name: "HistoricalBacktestList",
   components: {
     Search,
     Refresh,
-    PictureRounded,
   },
   setup() {
     const router = useRouter();
@@ -303,8 +128,6 @@ export default {
     const currentPage = ref(1);
     const pageSize = ref(10);
     const total = ref(0);
-    const reportDialogVisible = ref(false);
-    const selectedBacktest = ref(null);
 
     // 获取用户信息
     const getUserInfo = () => {
@@ -424,90 +247,8 @@ export default {
       return processed;
     };
 
-    // 从API获取回测报告详情
-    const fetchBacktestReport = async (reportId) => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          ElMessage.error("请先登录");
-          return null;
-        }
-
-        console.log("正在获取回测报告:", reportId);
-        const response = await axios.get(`/api/backtest/report/${reportId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        console.log("API响应:", response.data);
-
-        if (response.data.success) {
-          const processedData = processBacktestData(response.data.data);
-          console.log("处理后的数据:", processedData);
-          return processedData;
-        } else {
-          ElMessage.error("获取回测报告失败");
-          return null;
-        }
-      } catch (error) {
-        console.error("获取回测报告失败:", error);
-        ElMessage.error("获取回测报告失败");
-        return null;
-      }
-    };
-
-    // 渲染Plotly图表
-    const renderPlotlyChart = async (chartData) => {
-      console.log("开始渲染Plotly图表:", chartData);
-
-      const PlotlyLib = await loadPlotly();
-      if (!PlotlyLib) {
-        console.error("Plotly库未加载");
-        return;
-      }
-
-      if (!chartData) {
-        console.error("没有图表数据");
-        return;
-      }
-
-      const chartDiv = document.getElementById("plotly-chart");
-      if (!chartDiv) {
-        console.error("找不到图表容器元素 plotly-chart");
-        return;
-      }
-
-      console.log("找到图表容器元素，开始渲染...");
-      try {
-        console.log("图表数据结构:", {
-          hasData: !!chartData.data,
-          dataLength: chartData.data?.length,
-          hasLayout: !!chartData.layout,
-          layoutKeys: chartData.layout ? Object.keys(chartData.layout) : [],
-        });
-
-        await PlotlyLib.newPlot(chartDiv, chartData.data, chartData.layout, {
-          responsive: true,
-          displayModeBar: true,
-          modeBarButtonsToRemove: [
-            "pan2d",
-            "lasso2d",
-            "autoScale2d",
-            "select2d",
-          ],
-          displaylogo: false,
-        });
-
-        console.log("Plotly图表渲染成功");
-      } catch (error) {
-        console.error("渲染Plotly图表失败:", error);
-        console.error("图表数据:", chartData);
-      }
-    };
-
-    // 查看回测报告
-    const viewBacktestReport = async (backtest) => {
+    // 查看回测报告 - 跳转到专门的报告页面
+    const viewBacktestReport = (backtest) => {
       let reportId;
 
       // 获取报告ID
@@ -524,44 +265,21 @@ export default {
         return;
       }
 
-      // 统一从API获取完整的报告数据（包含图表数据）
-      const reportData = await fetchBacktestReport(reportId);
-      if (reportData) {
-        console.log("获取到的报告数据:", reportData);
-        selectedBacktest.value = reportData;
-        reportDialogVisible.value = true;
-
-        // 检查图表数据
-        console.log("检查图表数据:");
-        console.log(
-          "- plotly_chart_data:",
-          !!selectedBacktest.value?.plotly_chart_data
-        );
-
-        // 等待弹窗渲染完成后，初始化图表
-        await nextTick();
-
-        // 如果有plotly图表数据，渲染交互式图表
-        if (selectedBacktest.value?.plotly_chart_data) {
-          console.log("准备渲染Plotly图表...");
-          await renderPlotlyChart(selectedBacktest.value.plotly_chart_data);
-        } else {
-          console.log("没有Plotly图表数据，将显示占位符");
-        }
-      } else {
-        console.error("获取报告数据失败");
-      }
+      // 跳转到专门的回测报告页面
+      router.push({
+        name: "BacktestReport",
+        params: { reportId: reportId },
+      });
     };
 
     // 处理来自消息通知的报告查看请求
-    const handleRouteQuery = async () => {
+    const handleRouteQuery = () => {
       if (route.query.open_report) {
         const reportId = route.query.open_report;
-        const strategyName = route.query.strategy_name;
 
         // 延迟一段时间确保页面已加载
-        setTimeout(async () => {
-          await viewBacktestReport(reportId);
+        setTimeout(() => {
+          viewBacktestReport(reportId);
           // 清除路由参数避免重复触发
           router.replace({ name: "HistoricalBacktestList" });
         }, 500);
@@ -614,22 +332,6 @@ export default {
         console.error("删除回测报告失败:", error);
         ElMessage.error("删除回测报告失败");
       }
-    };
-
-    // 处理报告弹窗关闭
-    const handleReportDialogClose = async () => {
-      // 销毁Plotly图表实例
-      const chartDiv = document.getElementById("plotly-chart");
-      if (chartDiv && Plotly) {
-        try {
-          await Plotly.purge(chartDiv);
-        } catch (error) {
-          console.warn("销毁图表失败:", error);
-        }
-      }
-
-      reportDialogVisible.value = false;
-      selectedBacktest.value = null;
     };
 
     // 分页处理
@@ -706,8 +408,6 @@ export default {
       currentPage,
       pageSize,
       total,
-      reportDialogVisible,
-      selectedBacktest,
       filteredBacktests,
       formatStartTime,
       fetchBacktests,
@@ -715,7 +415,6 @@ export default {
       goToStrategyDetail,
       viewBacktestReport,
       deleteBacktestReport,
-      handleReportDialogClose,
       handleSizeChange,
       handleCurrentChange,
     };
@@ -775,108 +474,5 @@ export default {
   justify-content: flex-end;
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
-}
-
-/* 回测报告弹窗样式 */
-.backtest-report-content {
-  height: calc(90vh - 120px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.report-header {
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #e6e6e6;
-}
-
-.report-header h3 {
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  color: #333;
-}
-
-.report-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  font-size: 14px;
-  color: #666;
-}
-
-.report-charts {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.chart-container {
-  margin-bottom: 30px;
-}
-
-.chart-container h4 {
-  margin: 0 0 15px 0;
-  font-size: 16px;
-  color: #333;
-}
-
-.chart {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-.stat-item {
-  background-color: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-.stat-value {
-  display: block;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.stat-value.positive {
-  color: #10b981;
-}
-
-.stat-value.negative {
-  color: #ef4444;
-}
-
-.no-chart-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 300px;
-  color: #999;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-}
-
-.no-chart-placeholder p {
-  margin: 10px 0 0 0;
-  font-size: 14px;
 }
 </style>

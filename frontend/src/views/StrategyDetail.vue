@@ -464,18 +464,26 @@
           :rules="backtestRules"
           label-width="120px">
           <el-form-item label="开始日期" prop="start_date">
-            <el-date-picker
+            <VueDatePicker
               v-model="backtestForm.start_date"
-              type="date"
+              :format="'yyyy-MM-dd'"
               placeholder="选择开始日期"
-              style="width: 100%" />
+              :enable-time-picker="false"
+              auto-apply
+              :teleport="true"
+              :clearable="false"
+              class="compact-date-picker" />
           </el-form-item>
           <el-form-item label="结束日期" prop="end_date">
-            <el-date-picker
+            <VueDatePicker
               v-model="backtestForm.end_date"
-              type="date"
+              :format="'yyyy-MM-dd'"
               placeholder="选择结束日期"
-              style="width: 100%" />
+              :enable-time-picker="false"
+              auto-apply
+              :teleport="true"
+              :clearable="false"
+              class="compact-date-picker" />
           </el-form-item>
           <el-form-item label="初始资金(元)" prop="initial_fund">
             <el-input-number
@@ -512,6 +520,8 @@ import {
 import axios from "axios";
 import SmartAutocomplete from "@/components/SmartAutocomplete.vue";
 import CodeEditor from "@/components/CodeEditor.vue";
+import VueDatePicker from "@vuepic/vue-datepicker";
+import "@vuepic/vue-datepicker/dist/main.css";
 
 export default {
   name: "StrategyDetail",
@@ -523,6 +533,7 @@ export default {
     ArrowRight,
     SmartAutocomplete,
     CodeEditor,
+    VueDatePicker,
   },
   setup() {
     const router = useRouter();
@@ -1081,8 +1092,14 @@ export default {
         const backtestData = {
           strategy_creator: strategy.creator_name,
           strategy_name: strategy.strategy_name,
-          start_date: backtestForm.start_date.toISOString().split("T")[0],
-          end_date: backtestForm.end_date.toISOString().split("T")[0],
+          start_date:
+            backtestForm.start_date instanceof Date
+              ? backtestForm.start_date.toISOString().split("T")[0]
+              : backtestForm.start_date,
+          end_date:
+            backtestForm.end_date instanceof Date
+              ? backtestForm.end_date.toISOString().split("T")[0]
+              : backtestForm.end_date,
           initial_fund: backtestForm.initial_fund || 100000,
         };
 
@@ -1269,12 +1286,18 @@ export default {
         { required: true, message: "请选择结束日期", trigger: "change" },
         {
           validator: (rule, value, callback) => {
-            if (
-              value &&
-              backtestForm.start_date &&
-              new Date(value) < new Date(backtestForm.start_date)
-            ) {
-              callback(new Error("结束日期不能早于开始日期"));
+            if (value && backtestForm.start_date) {
+              const startDate =
+                backtestForm.start_date instanceof Date
+                  ? backtestForm.start_date
+                  : new Date(backtestForm.start_date);
+              const endDate = value instanceof Date ? value : new Date(value);
+
+              if (endDate < startDate) {
+                callback(new Error("结束日期不能早于开始日期"));
+              } else {
+                callback();
+              }
             } else {
               callback();
             }
@@ -1579,4 +1602,90 @@ export default {
 }
 
 /* 移除原来的独立按钮样式 - collapse-btn类已不再使用 */
+
+/* Vue DatePicker 样式调整，使其与 Element Plus 风格保持一致并解决布局问题 */
+.compact-date-picker {
+  width: 100%;
+}
+
+:deep(.dp__input_wrap) {
+  border-radius: 4px;
+  border: 1px solid #dcdfe6;
+  transition: border-color 0.3s;
+  width: 100%;
+  max-width: 200px; /* 限制最大宽度 */
+}
+
+:deep(.dp__input_wrap:hover) {
+  border-color: #c0c4cc;
+}
+
+:deep(.dp__input_wrap.dp__input_focus) {
+  border-color: #409eff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+}
+
+:deep(.dp__input) {
+  height: 32px;
+  line-height: 32px;
+  font-size: 14px;
+  color: #606266;
+  padding: 0 11px;
+  width: 100%;
+  text-align: center; /* 文字居中对齐，解决重叠问题 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.dp__input::placeholder) {
+  color: #c0c4cc;
+}
+
+/* 日历图标位置调整 */
+:deep(.dp__input_icon) {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #c0c4cc;
+  pointer-events: none;
+  width: 16px;
+  height: 16px;
+}
+
+:deep(.dp__menu) {
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  min-width: 280px; /* 确保弹出菜单有足够宽度显示月份名称 */
+}
+
+:deep(.dp__calendar_header_item) {
+  color: #606266;
+  font-weight: 500;
+}
+
+:deep(.dp__calendar_item) {
+  color: #606266;
+}
+
+:deep(.dp__calendar_item.dp__active_date) {
+  background-color: #409eff;
+  color: #fff;
+}
+
+:deep(.dp__calendar_item:hover) {
+  background-color: #f5f7fa;
+}
+
+/* 月份导航按钮样式优化 */
+:deep(.dp__month_year_select) {
+  min-width: 100px; /* 确保月份选择器有足够宽度 */
+}
+
+:deep(.dp__overlay_col) {
+  min-width: 80px; /* 月份列表项最小宽度 */
+}
 </style>
