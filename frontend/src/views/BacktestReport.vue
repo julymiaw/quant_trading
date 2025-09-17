@@ -306,18 +306,13 @@ export default {
 
         if (response.data.success) {
           reportData.value = response.data.data;
-          console.log("报告数据:", reportData.value);
-          console.log("是否有图表数据:", !!reportData.value?.plotly_chart_data);
 
           // 渲染图表 - 等待DOM更新完成
           if (reportData.value?.plotly_chart_data) {
-            console.log("开始渲染图表...");
             // 使用setTimeout确保DOM完全更新
             setTimeout(async () => {
               await renderChart();
             }, 100);
-          } else {
-            console.log("没有图表数据");
           }
         } else {
           ElMessage.error("获取报告数据失败");
@@ -332,17 +327,13 @@ export default {
 
     // 渲染Plotly图表
     const renderChart = async () => {
-      console.log("renderChart开始执行");
       const PlotlyLib = await loadPlotly();
-      console.log("Plotly库加载结果:", !!PlotlyLib);
 
       if (!PlotlyLib || !reportData.value?.plotly_chart_data) {
-        console.log("缺少Plotly库或图表数据");
         return;
       }
 
       const chartData = reportData.value.plotly_chart_data;
-      console.log("图表数据:", chartData);
 
       // 通用的图表配置
       const commonConfig = {
@@ -378,7 +369,6 @@ export default {
               },
               commonConfig
             );
-            console.log("收益图表渲染成功");
           } catch (error) {
             console.error("渲染收益图表失败:", error);
           }
@@ -399,7 +389,6 @@ export default {
               },
               commonConfig
             );
-            console.log("盈亏图表渲染成功");
           } catch (error) {
             console.error("渲染盈亏图表失败:", error);
           }
@@ -420,7 +409,6 @@ export default {
               },
               commonConfig
             );
-            console.log("交易图表渲染成功");
           } catch (error) {
             console.error("渲染交易图表失败:", error);
           }
@@ -441,7 +429,6 @@ export default {
         }
       }
 
-      console.log(`元素 ${elementId}:`, element, "尝试次数:", attempts);
       return element;
     };
 

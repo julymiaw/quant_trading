@@ -254,10 +254,8 @@ export default {
       // 获取报告ID
       if (typeof backtest === "string") {
         reportId = backtest;
-        console.log("从信箱链接查看报告，ID:", reportId);
       } else {
         reportId = backtest.report_id;
-        console.log("从回测列表查看报告，ID:", reportId);
       }
 
       if (!reportId) {

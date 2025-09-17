@@ -158,10 +158,6 @@ export default {
       // 如果有链接，处理链接跳转
       if (notification.link_url && notification.link_params) {
         try {
-          // 调试信息
-          console.log("link_params type:", typeof notification.link_params);
-          console.log("link_params value:", notification.link_params);
-
           let params;
           if (typeof notification.link_params === "string") {
             params = JSON.parse(notification.link_params);
@@ -182,7 +178,6 @@ export default {
           }
         } catch (e) {
           console.error("解析链接参数失败:", e);
-          console.error("原始数据:", notification.link_params);
         }
       }
 

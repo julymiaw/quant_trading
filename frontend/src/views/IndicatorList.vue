@@ -909,7 +909,6 @@ export default {
     // 处理数据源选择
     const handleDataSourceSelect = (value) => {
       addParamForm.data_id = value;
-      console.log("选择了数据源:", value);
     };
 
     // 添加指标参数（支持 existing/new 两种模式，与 StrategyDetail 行为一致）

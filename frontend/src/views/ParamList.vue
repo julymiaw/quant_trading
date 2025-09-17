@@ -546,7 +546,6 @@ export default {
     // 处理数据源选择
     const handleDataSourceSelect = (value) => {
       paramForm.data_id = value;
-      console.log("选择了数据源:", value);
     };
 
     // 处理参数弹窗关闭

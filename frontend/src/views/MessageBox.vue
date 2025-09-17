@@ -423,13 +423,10 @@ export default {
     const handleMessageLink = (message) => {
       if (message.link_url) {
         try {
-          console.log("处理消息链接:", message.link_url, message.link_params);
-
           // 检查是否是回测报告链接
           if (message.link_url.startsWith("/backtest/report/")) {
             // 从URL中提取报告ID
             const reportId = message.link_url.split("/").pop();
-            console.log("提取到报告ID:", reportId);
 
             // 跳转到回测报告详情页面
             router.push({
