@@ -12,20 +12,6 @@ def create_dynamic_data_class(lines):
 
     return DynamicPandasData
 
-class CustomCommission(bt.CommInfoBase):
-    params = (
-        ('buy_comm', 0.001),   # 买入佣金比例
-        ('sell_comm', 0.002),  # 卖出佣金比例
-    )
-
-    def _getcommission(self, size, price, pseudoexec):
-        if size > 0:  # 买入
-            return abs(size) * price * self.p.buy_comm
-        elif size < 0:  # 卖出
-            return abs(size) * price * self.p.sell_comm
-        else:
-            return 0
-
 class TestStrategy(bt.Strategy):
     params = (
         ('printlog', False),
@@ -33,8 +19,6 @@ class TestStrategy(bt.Strategy):
         ('param_columns', []),      # 原始字段名列表
         ('select_func', None),
         ('risk_control_func', None),
-        ('position_count', 1),
-        ('rebalance_interval', 1),
     )
 
     def log(self, txt, dt=None, doprint=False):
@@ -44,107 +28,79 @@ class TestStrategy(bt.Strategy):
 
     def __init__(self):
         self.dataclose = {d._name: d.close for d in self.datas}
-        self.order = None
+        self.orders = {}
         self.val_start = self.broker.getvalue()
         self.comm_info = {}
         self.param_map = self.params.param_columns_map
         self.param_keys = self.params.param_columns
         self.select_func = self.params.select_func
         self.risk_control_func = self.params.risk_control_func
-        self.position_count = self.params.position_count
-        self.last_rebalance_date = None
 
     def notify_order(self, order):
+        stock = order.data._name
+
         if order.status in [order.Submitted, order.Accepted]:
-            self.log(f'ORDER SUBMITTED {order.data._name}, {order.info}', doprint=True)
+            self.log(f'ORDER SUBMITTED {stock}, {order.info}', doprint=True)
             return
 
-        if order.status in [order.Completed] and order.executed is not None:
+        if order.status == order.Completed and order.executed is not None:
             if order.isbuy():
                 self.log(
-                    f'BUY EXECUTED {order.data._name}, Price: {order.executed.price:.2f}, Cost: {getattr(order.executed, "cost", 0):.2f}, Comm {order.executed.comm:.2f}',
+                    f'BUY EXECUTED {stock}, Price: {order.executed.price:.2f}, Cost: {getattr(order.executed, "cost", 0):.2f}, Comm {order.executed.comm:.2f}',
                     doprint=True)
             elif order.issell():
                 self.log(
-                    f'SELL EXECUTED {order.data._name}, Price: {order.executed.price:.2f}, Cost: {getattr(order.executed, "cost", 0):.2f}, Comm {order.executed.comm:.2f}',
+                    f'SELL EXECUTED {stock}, Price: {order.executed.price:.2f}, Cost: {getattr(order.executed, "cost", 0):.2f}, Comm {order.executed.comm:.2f}',
                     doprint=True)
-            self.comm_info[order.data._name] = self.comm_info.get(order.data._name, 0) + order.executed.comm
+            self.comm_info[stock] = self.comm_info.get(stock, 0) + order.executed.comm
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log(f'ORDER CANCELED {order.data._name}, Status: {order.Status[order.status]}', doprint=True)
+            self.log(f'ORDER CANCELED {stock}, Status: {order.Status[order.status]}', doprint=True)
 
-        self.order = None
+        self.orders[stock] = None  # 清除该股票的订单记录`
 
     def next(self):
-        if self.order:
-            return
-
         date = self.datas[0].datetime.date(0)
-
-        # 判断是否需要调仓
-        if self.last_rebalance_date is not None:
-            delta_days = (date - self.last_rebalance_date).days
-            if delta_days < self.params.rebalance_interval:
-                return  # 跳过本次调仓
-
-        self.last_rebalance_date = date  # 更新调仓日期
-
         params = {}
         candidates = []
         current_holdings = []
 
-        # 构建 params 字典
         for d in self.datas:
             stock = d._name
-            param_values = {}
-
-            for key in self.param_keys:
-                field_name = self.param_map.get(key, key).split('.')[-1]
-                param_values[key] = getattr(d, field_name, [None])[0]
-
-            # 默认加入收盘价
+            param_values = {key: getattr(d, self.param_map.get(key, key).split('.')[-1], [None])[0]
+                            for key in self.param_keys}
             param_values["system.close"] = self.dataclose[stock][0]
             params[stock] = param_values
 
             self.log(f'{stock}, Close, {params[stock]["system.close"]:.2f}')
-            
             candidates.append(stock)
+
             if self.getposition(d):
                 current_holdings.append(stock)
 
-        # 风险控制：决定是否卖出
+        # 先执行所有卖出逻辑
         safe_holdings = self.risk_control_func(current_holdings, params, date)
-        for stock in current_holdings:
-            if stock not in safe_holdings:
-                d = next(data for data in self.datas if data._name == stock)
-                self.log(f'SELL CREATE (Risk Control) {stock}, {self.dataclose[stock][0]:.2f}', doprint=True)
-                self.order = self.order_target_percent(d, target=0)
-
-        # 选股逻辑：决定是否买入
-        selected_stocks = self.select_func(candidates, params, self.position_count, current_holdings, date)
+        position_count = 3
+        selected_stocks = self.select_func(candidates, params, position_count, current_holdings, date)
 
         for stock in current_holdings:
-            if stock not in selected_stocks and stock in safe_holdings:
+            if stock not in safe_holdings or stock not in selected_stocks:
                 d = next(data for data in self.datas if data._name == stock)
-                self.log(f'SELL CREATE {d._name}, {self.dataclose[d._name][0]:.2f}', doprint=True)
-                self.order = self.order_target_percent(d, target=0.0)
+                if not self.orders.get(stock):
+                    self.log(f'SELL CREATE {stock}, {self.dataclose[stock][0]:.2f}', doprint=True)
+                    self.orders[stock] = self.order_target_percent(d, target=0)
 
-        buy_candidates = [stock for stock in selected_stocks if stock not in current_holdings]
-        # print(buy_candidates)
+        # 再执行所有买入逻辑
+        buy_candidates = [s for s in selected_stocks if s not in current_holdings]
+        print(date, buy_candidates)
+
         if buy_candidates:
-            # 计算每只股票的分配资金
-            total_value = max(0, self.broker.getcash() - self.broker.getvalue() * 0.1)
-            target_value_per_stock = total_value / len(buy_candidates)  # 留出10%现金
-
+            cash_per_stock = self.broker.get_cash() / len(buy_candidates)
             for stock in buy_candidates:
                 d = next(data for data in self.datas if data._name == stock)
-                price = self.dataclose[d._name][0]
-                if price == 0:
-                    continue  # 避免除以零
-                target_percent = target_value_per_stock / self.broker.getvalue()
-                self.log(f'BUY CREATE {d._name}, Price: {price:.2f}, Target %: {target_percent:.4f}', doprint=True)
-                self.order = self.order_target_percent(d, target=target_percent)
-
+                if not self.orders.get(stock):
+                    self.log(f'BUY CREATE {stock}, {self.dataclose[stock][0]:.2f}', doprint=True)
+                    self.orders[stock] = self.order_target_percent(d, target=0.9)
 
 
     def stop(self):
@@ -166,6 +122,10 @@ if __name__ == '__main__':
     # 或者使用 system_MACD策略 的数据，取消注释以切换
     # datapath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data_params.csv')
     # jsonpath = os.path.join(modpath, '..\data_prepared\system_MACD策略\prepared_data.json')  # json 文件路径
+
+    # 或者使用 system_小市值策略 的数据，取消注释以切换
+    # datapath = os.path.join(modpath, '..\data_prepared\system_小市值策略\prepared_data_params.csv')
+    # jsonpath = os.path.join(modpath, '..\data_prepared\system_小市值策略\prepared_data.json')  # json 文件路径
 
     # 从 json 文件读取配置
     with open(jsonpath, 'r', encoding='utf-8') as f:
@@ -190,18 +150,8 @@ if __name__ == '__main__':
         if 'column_mapping' in json_data:
             param_columns_map.update(json_data['column_mapping'])
 
-        # 提取佣金比例（从 strategy_info 中）
-        strategy_info = json_data.get('strategy_info', {})
-        buy_fee_rate = strategy_info.get('buy_fee_rate', 0.001)   # 默认买入佣金 0.1%
-        sell_fee_rate = strategy_info.get('sell_fee_rate', 0.001) # 默认卖出佣金 0.1%
-        position_count = strategy_info.get('position_count', 1)
-        rebalance_interval = strategy_info.get('rebalance_interval', 1)
-
     df = pd.read_csv(datapath, index_col=1, parse_dates=True)
     grouped = df.groupby(df['ts_code'])
-
-    commission_scheme = CustomCommission(buy_comm=buy_fee_rate, sell_comm=sell_fee_rate)
-    cerebro.broker.addcommissioninfo(commission_scheme)
 
     for name, group in grouped:
         available_columns = group.columns.tolist()
@@ -251,13 +201,11 @@ if __name__ == '__main__':
         param_columns_map=param_columns_map,
         param_columns=param_columns,
         select_func=select_func,
-        risk_control_func=risk_control_func,
-        position_count = position_count,
-        rebalance_interval = rebalance_interval
+        risk_control_func=risk_control_func
     )
 
     cerebro.broker.setcash(100000.0)
-
+    cerebro.broker.setcommission(commission=0.001)
     cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='returns')   # 时间回报率
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')  # 夏普比率
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown') # 回撤
