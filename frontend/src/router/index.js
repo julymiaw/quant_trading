@@ -53,6 +53,12 @@ const routes = [
         component: () => import("../views/HistoricalBacktestList.vue"),
       },
       {
+        path: "backtest/report/:reportId",
+        name: "BacktestReport",
+        component: () => import("../views/BacktestReport.vue"),
+        props: true,
+      },
+      {
         path: "messages",
         name: "MessageBox",
         component: () => import("../views/MessageBox.vue"),

@@ -3693,8 +3693,8 @@ def start_backtest(current_user):
                     message_type="backtest_complete",
                     title=f"回测完成 - {strategy_name}",
                     content=f"策略 '{strategy_name}' 回测已完成。总收益率: {total_return:.2%}，夏普比率: {sharpe_ratio:.4f}",
-                    link_url="/backtests",
-                    link_params={"report_id": report_id},
+                    link_url=f"/backtest/report/{report_id}",
+                    link_params=None,
                 )
 
                 logger.info(f"回测任务完成，报告ID: {report_id}")
