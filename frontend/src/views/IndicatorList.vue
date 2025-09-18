@@ -1423,6 +1423,7 @@ export default {
   border: 1px solid #e8e8e8;
   border-radius: 4px;
   overflow: hidden;
+  width: 560px;
 }
 
 /* Prevent action buttons from wrapping and add spacing */
