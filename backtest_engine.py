@@ -114,6 +114,24 @@ class PortfolioValue(bt.Analyzer):
         }
 
 
+class CustomCommission(bt.CommInfoBase):
+    """自定义手续费，支持买入和卖出不同费率"""
+
+    params = (
+        ("buy_comm", 0.001),
+        ("sell_comm", 0.002),
+    )
+
+    def _getcommission(self, size, price, pseudoexec):
+        # size > 0 表示买入，size < 0 表示卖出
+        if size > 0:
+            return abs(size) * price * self.p.buy_comm
+        elif size < 0:
+            return abs(size) * price * self.p.sell_comm
+        else:
+            return 0
+
+
 def create_dynamic_data_class(line_names):
     """创建动态数据类，兼容现有逻辑"""
 
@@ -488,9 +506,10 @@ class BacktestEngine:
 
         # 设置初始资金和手续费
         self.cerebro.broker.setcash(self.initial_fund)
-        # 设置买入和卖出手续费 - backtrader默认使用平均手续费，我们取两者的平均值
-        avg_commission = (self.buy_fee_rate + self.sell_fee_rate) / 2
-        self.cerebro.broker.setcommission(commission=avg_commission)
+        comminfo = CustomCommission(
+            buy_comm=self.buy_fee_rate, sell_comm=self.sell_fee_rate
+        )
+        self.cerebro.broker.addcommissioninfo(comminfo)
 
         # 添加分析器
         self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="returns")
