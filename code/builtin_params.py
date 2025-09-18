@@ -2,240 +2,86 @@
 # -*- coding: utf-8 -*-
 """
 内置参数定义模块
-定义系统内置的技术指标参数，包括波动率等
+定义系统内置的技术指标参数配置信息
+注意：波动率计算逻辑现在由指标处理，不再由参数处理
 """
 
-import numpy as np
-import pandas as pd
-
-
-def historical_volatility_param(prices, window=30):
-    """
-    计算滚动历史波动率参数 - 基于volatility_calculator.py的historical_volatility函数
-
-    :param prices: 价格序列（Pandas Series或numpy array）
-    :param window: 计算波动率的滚动窗口大小（默认30天）
-    :return: 年化历史波动率数组，与输入prices长度相同
-    """
-    # 确保输入是NumPy数组
-    prices_arr = np.asarray(prices)
-
-    # 计算日简单收益率
-    returns = np.diff(prices_arr) / prices_arr[:-1]
-
-    # 创建一个数组来存储结果，第一天初始值为0
-    volatility_series = np.full_like(prices_arr, 0.0, dtype=float)
-
-    # 从第二天开始计算滚动波动率
-    for i in range(1, len(returns) + 1):
-        # 获取当前窗口内的收益率
-        current_window = min(i, window)
-        window_returns = returns[i - current_window : i]
-
-        # 计算窗口内收益率的标准差（日波动率）
-        daily_vol = np.std(window_returns) if len(window_returns) > 0 else 0
-
-        # 年化波动率并转换为百分比，与原实现保持一致
-        annual_vol = daily_vol * np.sqrt(252) * 100
-
-        # 将结果存储在对应位置
-        volatility_series[i] = annual_vol
-
-    return volatility_series
-
-
-def parkinson_volatility_param(highs, lows, window=30):
-    """
-    计算Parkinson波动率参数
-
-    :param highs: 最高价序列
-    :param lows: 最低价序列
-    :param window: 计算窗口大小
-    :return: Parkinson波动率序列
-    """
-    if len(highs) != len(lows):
-        raise ValueError("Highs and lows must have the same length.")
-
-    highs_arr = np.asarray(highs)
-    lows_arr = np.asarray(lows)
-
-    # 计算对数范围
-    log_range = np.log(highs_arr / lows_arr)
-
-    # 创建结果数组
-    volatility_series = np.full_like(highs_arr, 0.0, dtype=float)
-
-    # 滚动计算Parkinson波动率
-    for i in range(window, len(log_range) + 1):
-        window_log_range = log_range[i - window : i]
-
-        # 使用Parkinson公式计算方差
-        variance = (1 / (4 * np.log(2))) * np.mean(window_log_range**2)
-
-        # 年化波动率
-        annualized_volatility = np.sqrt(variance) * np.sqrt(252)
-
-        volatility_series[i - 1] = annualized_volatility
-
-    return volatility_series
-
-
-def garman_klass_volatility_param(opens, highs, lows, closes, window=30):
-    """
-    计算Garman-Klass波动率参数
-
-    :param opens: 开盘价序列
-    :param highs: 最高价序列
-    :param lows: 最低价序列
-    :param closes: 收盘价序列
-    :param window: 计算窗口大小
-    :return: Garman-Klass波动率序列
-    """
-    if not (len(opens) == len(highs) == len(lows) == len(closes)):
-        raise ValueError("All price lists must have the same length.")
-
-    opens_arr = np.asarray(opens)
-    highs_arr = np.asarray(highs)
-    lows_arr = np.asarray(lows)
-    closes_arr = np.asarray(closes)
-
-    # 计算对数范围
-    log_hl = np.log(highs_arr / lows_arr)
-    log_co = np.log(closes_arr / opens_arr)
-
-    # 创建结果数组
-    volatility_series = np.full_like(opens_arr, 0.0, dtype=float)
-
-    # 滚动计算Garman-Klass波动率
-    for i in range(window, len(log_hl) + 1):
-        window_log_hl = log_hl[i - window : i]
-        window_log_co = log_co[i - window : i]
-
-        # 使用Garman-Klass公式计算方差
-        variance = (0.5 * np.mean(window_log_hl**2)) - (2 * np.log(2) - 1) * np.mean(
-            window_log_co**2
-        )
-
-        # 年化波动率
-        annualized_volatility = np.sqrt(variance) * np.sqrt(252)
-
-        volatility_series[i - 1] = annualized_volatility
-
-    return volatility_series
-
-
-# 定义参数配置信息，用于数据库初始化
-BUILTIN_PARAMS = {
-    "historical_volatility": {
-        "param_name": "historical_volatility",
-        "data_id": "daily.close",
-        "param_type": "table",
+# 定义波动率参数配置信息（现在基于波动率指标）
+VOLATILITY_PARAMS = {
+    "historical_volatility_30d": {
+        "param_name": "historical_volatility_30d",
+        "data_id": "system.historical_volatility",
+        "param_type": "indicator",
         "pre_period": 30,
         "post_period": 0,
-        "agg_func": "VOLATILITY",
-        "description": "基于收盘价的30天滚动历史波动率",
+        "agg_func": "SMA",
+        "description": "基于历史波动率指标的30天平均参数",
     },
-    "parkinson_volatility": {
-        "param_name": "parkinson_volatility",
-        "data_id": "daily.high,daily.low",
-        "param_type": "table",
+    "parkinson_volatility_30d": {
+        "param_name": "parkinson_volatility_30d",
+        "data_id": "system.parkinson_volatility",
+        "param_type": "indicator",
         "pre_period": 30,
         "post_period": 0,
-        "agg_func": "PARKINSON_VOL",
-        "description": "基于最高价和最低价的30天Parkinson波动率",
+        "agg_func": "SMA",
+        "description": "基于Parkinson波动率指标的30天平均参数",
     },
-    "garman_klass_volatility": {
-        "param_name": "garman_klass_volatility",
-        "data_id": "daily.open,daily.high,daily.low,daily.close",
-        "param_type": "table",
+    "garman_klass_volatility_30d": {
+        "param_name": "garman_klass_volatility_30d",
+        "data_id": "system.garman_klass_volatility",
+        "param_type": "indicator",
         "pre_period": 30,
         "post_period": 0,
-        "agg_func": "GARMAN_KLASS_VOL",
-        "description": "基于OHLC价格的30天Garman-Klass波动率",
+        "agg_func": "SMA",
+        "description": "基于Garman-Klass波动率指标的30天平均参数",
     },
 }
 
-# 定义预测指标配置信息
-PREDICT_INDICATORS = {
+# 定义预测参数配置信息
+PREDICT_PARAMS = {
     "predict_volatility_1day": {
-        "indicator_name": "predict_volatility_1day",
-        "calculation_method": """
-def calculation_method(params):
-    '''预测未来1天的波动率'''
-    import numpy as np
-    from code.predict import predict
-    
-    # 获取历史波动率数据（过去30天）
-    hist_vol = params.get('system.historical_volatility', np.nan)
-    if np.isnan(hist_vol):
-        return np.nan
-    
-    # 这里应该从历史数据中获取窗口数据
-    # 简化实现：直接返回历史波动率作为预测值
-    return hist_vol
-""",
-        "description": "基于GINN-LSTM模型预测未来1天的波动率",
+        "param_name": "predict_volatility_1day",
+        "data_id": "system.historical_volatility_30d",
+        "param_type": "indicator",
+        "pre_period": 30,
+        "post_period": 0,
+        "agg_func": "PREDICT",
+        "description": "基于历史波动率预测未来1天的波动率参数",
     },
     "predict_volatility_2day": {
-        "indicator_name": "predict_volatility_2day",
-        "calculation_method": """
-def calculation_method(params):
-    '''预测未来2天的波动率'''
-    import numpy as np
-    
-    # 基于前一天的预测结果进行递归预测
-    pred_1day = params.get('system.predict_volatility_1day', np.nan)
-    if np.isnan(pred_1day):
-        return np.nan
-    
-    # 简化实现：使用前一天预测值
-    return pred_1day * 1.01  # 略微调整
-""",
-        "description": "基于GINN-LSTM模型预测未来2天的波动率",
+        "param_name": "predict_volatility_2day",
+        "data_id": "system.predict_volatility_1day",
+        "param_type": "indicator",
+        "pre_period": 30,
+        "post_period": 0,
+        "agg_func": "PREDICT",
+        "description": "基于1天预测结果预测未来2天的波动率参数",
     },
     "predict_volatility_3day": {
-        "indicator_name": "predict_volatility_3day",
-        "calculation_method": """
-def calculation_method(params):
-    '''预测未来3天的波动率'''
-    import numpy as np
-    
-    pred_2day = params.get('system.predict_volatility_2day', np.nan)
-    if np.isnan(pred_2day):
-        return np.nan
-    
-    return pred_2day * 1.01
-""",
-        "description": "基于GINN-LSTM模型预测未来3天的波动率",
+        "param_name": "predict_volatility_3day",
+        "data_id": "system.predict_volatility_2day",
+        "param_type": "indicator",
+        "pre_period": 30,
+        "post_period": 0,
+        "agg_func": "PREDICT",
+        "description": "基于2天预测结果预测未来3天的波动率参数",
     },
     "predict_volatility_4day": {
-        "indicator_name": "predict_volatility_4day",
-        "calculation_method": """
-def calculation_method(params):
-    '''预测未来4天的波动率'''
-    import numpy as np
-    
-    pred_3day = params.get('system.predict_volatility_3day', np.nan)
-    if np.isnan(pred_3day):
-        return np.nan
-    
-    return pred_3day * 1.01
-""",
-        "description": "基于GINN-LSTM模型预测未来4天的波动率",
+        "param_name": "predict_volatility_4day",
+        "data_id": "system.predict_volatility_3day",
+        "param_type": "indicator",
+        "pre_period": 30,
+        "post_period": 0,
+        "agg_func": "PREDICT",
+        "description": "基于3天预测结果预测未来4天的波动率参数",
     },
     "predict_volatility_5day": {
-        "indicator_name": "predict_volatility_5day",
-        "calculation_method": """
-def calculation_method(params):
-    '''预测未来5天的波动率'''
-    import numpy as np
-    
-    pred_4day = params.get('system.predict_volatility_4day', np.nan)
-    if np.isnan(pred_4day):
-        return np.nan
-    
-    return pred_4day * 1.01
-""",
-        "description": "基于GINN-LSTM模型预测未来5天的波动率",
+        "param_name": "predict_volatility_5day",
+        "data_id": "system.predict_volatility_4day",
+        "param_type": "indicator",
+        "pre_period": 30,
+        "post_period": 0,
+        "agg_func": "PREDICT",
+        "description": "基于4天预测结果预测未来5天的波动率参数",
     },
 }

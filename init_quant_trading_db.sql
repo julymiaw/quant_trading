@@ -366,39 +366,39 @@ VALUES (
         0,
         'EMA'
     ),
-    -- 波动率相关参数
+    -- 波动率相关参数（基于波动率指标，支持向前看功能）
     (
         'system',
-        'historical_volatility',
-        'daily.close',
-        'table',
+        'historical_volatility_30d',
+        'system.historical_volatility',
+        'indicator',
         30,
         0,
-        'VOLATILITY'
+        'SMA'
     ),
     (
         'system',
-        'parkinson_volatility',
-        'daily.high,daily.low',
-        'table',
+        'parkinson_volatility_30d',
+        'system.parkinson_volatility',
+        'indicator',
         30,
         0,
-        'PARKINSON_VOL'
+        'SMA'
     ),
     (
         'system',
-        'garman_klass_volatility',
-        'daily.open,daily.high,daily.low,daily.close',
-        'table',
+        'garman_klass_volatility_30d',
+        'system.garman_klass_volatility',
+        'indicator',
         30,
         0,
-        'GARMAN_KLASS_VOL'
+        'SMA'
     ),
-    -- 预测波动率参数（基于历史波动率）
+    -- 预测波动率参数（基于波动率参数）
     (
         'system',
         'predict_volatility_1day',
-        'system.historical_volatility',
+        'system.historical_volatility_30d',
         'indicator',
         30,
         0,
@@ -441,7 +441,7 @@ VALUES (
         'PREDICT'
     );
 
--- 3. 插入MACD指标
+-- 3. 插入MACD指标和波动率指标
 INSERT INTO
     Indicator (
         creator_name,
@@ -455,6 +455,27 @@ VALUES (
         'MACD',
         'def calculation_method(params):\n    return params["system.daily_ema_12"] - params["system.daily_ema_26"]',
         'MACD线=12日EMA-26日EMA',
+        TRUE
+    ),
+    (
+        'system',
+        'historical_volatility',
+        'def calculation_method(params):\n    import numpy as np\n    close_prices = params["system.close"]\n    if len(close_prices) < 2:\n        return 0.0\n    returns = np.log(close_prices[1:] / close_prices[:-1])\n    volatility = np.std(returns) * np.sqrt(252)\n    return float(volatility)',
+        '历史波动率指标，基于收盘价计算',
+        TRUE
+    ),
+    (
+        'system',
+        'parkinson_volatility',
+        'def calculation_method(params):\n    import numpy as np\n    high_prices = params["system.high"]\n    low_prices = params["system.low"]\n    if len(high_prices) < 1 or len(low_prices) < 1:\n        return 0.0\n    hl_ratios = np.log(high_prices / low_prices)\n    parkinson_vol = np.sqrt(np.mean(hl_ratios ** 2) / (4 * np.log(2)) * 252)\n    return float(parkinson_vol)',
+        'Parkinson波动率指标，基于高低价计算',
+        TRUE
+    ),
+    (
+        'system',
+        'garman_klass_volatility',
+        'def calculation_method(params):\n    import numpy as np\n    open_prices = params["system.open"]\n    high_prices = params["system.high"]\n    low_prices = params["system.low"]\n    close_prices = params["system.close"]\n    if len(open_prices) < 1:\n        return 0.0\n    hl_term = 0.5 * (np.log(high_prices / low_prices)) ** 2\n    oc_term = (2 * np.log(2) - 1) * (np.log(close_prices / open_prices)) ** 2\n    gk_vol = np.sqrt(np.mean(hl_term - oc_term) * 252)\n    return float(gk_vol)',
+        'Garman-Klass波动率指标，基于OHLC价格计算',
         TRUE
     );
 -- 4. 插入策略（小市值策略、双均线策略、MACD策略）
@@ -528,7 +549,7 @@ VALUES (
         NOW()
     );
 
--- 5. 插入指标与参数关系表（MACD指标参数）
+-- 5. 插入指标与参数关系表（MACD指标参数和波动率指标参数）
 INSERT INTO
     IndicatorParamRel (
         indicator_creator_name,
@@ -547,6 +568,51 @@ VALUES (
         'MACD',
         'system',
         'daily_ema_26'
+    ),
+    -- 历史波动率指标参数
+    (
+        'system',
+        'historical_volatility',
+        'system',
+        'close'
+    ),
+    -- Parkinson波动率指标参数
+    (
+        'system',
+        'parkinson_volatility',
+        'system',
+        'high'
+    ),
+    (
+        'system',
+        'parkinson_volatility',
+        'system',
+        'low'
+    ),
+    -- Garman-Klass波动率指标参数
+    (
+        'system',
+        'garman_klass_volatility',
+        'system',
+        'open'
+    ),
+    (
+        'system',
+        'garman_klass_volatility',
+        'system',
+        'high'
+    ),
+    (
+        'system',
+        'garman_klass_volatility',
+        'system',
+        'low'
+    ),
+    (
+        'system',
+        'garman_klass_volatility',
+        'system',
+        'close'
     );
 
 -- 6. 插入策略与参数关系表（小市值策略、双均线策略、MACD策略、风控函数参数）
