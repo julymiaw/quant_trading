@@ -483,8 +483,8 @@ export default {
         // 使用新的复制API
         const strategyId = `${strategy.creator_name}/${strategy.strategy_name}`;
         const copyData = {
-          strategy_name: `复制_${strategy.strategy_name}_${Date.now()}`, // 使用时间戳确保唯一性
-          description: `复制自 ${strategy.creator_name}.${strategy.strategy_name}`,
+          strategy_name: `复制_${strategy.strategy_name}_${Date.now()}`,
+          description: strategy.strategy_desc || "",
         };
 
         const response = await axios.post(

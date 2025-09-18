@@ -452,28 +452,59 @@ export default {
     };
 
     // 复制参数
-    const copyParam = (param) => {
+    const copyParam = async (param) => {
       const userInfo = getUserInfo();
       if (!userInfo) {
         ElMessage.error("请先登录");
         return;
       }
 
-      // 重置表单
-      Object.assign(paramForm, {
-        param_name: `copy_${param.param_name}`,
-        data_id: param.data_id,
-        param_type: param.param_type,
-        pre_period: param.pre_period || 0,
-        post_period: param.post_period || 0,
-        agg_func: param.agg_func || null,
-      });
+      try {
+        loading.value = true;
 
-      isEditMode.value = false;
-      editingParam.value = null;
-      paramDialogVisible.value = true;
+        // 获取认证token
+        const token = localStorage.getItem("token");
+        if (!token) {
+          ElMessage.error("请先登录");
+          return;
+        }
 
-      ElMessage.info("已复制参数，您可以修改后保存");
+        // 准备要发送的数据，确保所有字段都正确复制
+        const submitData = {
+          param_name: `copy_${param.param_name}`,
+          data_id: param.data_id || "",
+          param_type: param.param_type || "table",
+          pre_period: Number(param.pre_period) || 0,
+          post_period: Number(param.post_period) || 0,
+          agg_func: param.agg_func || null,
+        };
+
+        // 调用API创建新参数
+        await axios.post("/api/params", submitData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        ElMessage.success("参数复制成功");
+
+        // 重新获取参数列表
+        await fetchParams();
+      } catch (error) {
+        console.error("复制参数失败:", error);
+        if (
+          error.response &&
+          error.response.data &&
+          error.response.data.message
+        ) {
+          ElMessage.error(`复制参数失败: ${error.response.data.message}`);
+        } else {
+          ElMessage.error("复制参数失败，请重试");
+        }
+      } finally {
+        loading.value = false;
+      }
     };
 
     // 保存参数

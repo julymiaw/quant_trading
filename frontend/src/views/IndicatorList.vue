@@ -79,7 +79,7 @@
           show-overflow-tooltip
           min-width="200" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="400" fixed="right">
           <template #default="scope">
             <!-- 系统指标：查看参数、查看代码、复制 -->
             <template v-if="scope.row.creator_name === 'system'">
@@ -817,7 +817,7 @@ export default {
         const response = await axios.post(
           `/api/indicators/${indicatorId}/copy`,
           {
-            indicator_name: `复制_${indicator.indicator_name}`,
+            indicator_name: `copy_${indicator.indicator_name}`,
             description: indicator.description || "",
           },
           {
