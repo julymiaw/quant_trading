@@ -303,6 +303,17 @@ export default {
       selectedMessage.value = message;
       messageDetailVisible.value = true;
 
+      // 在 URL 中设置 open_message 参数，但不向历史添加新记录
+      try {
+        router.replace({
+          query: Object.assign({}, route.query, {
+            open_message: message.message_id,
+          }),
+        });
+      } catch (e) {
+        // ignore
+      }
+
       // 如果是未读消息，自动标记为已读
       if (message.status === "unread") {
         markAsReadSilent(message.message_id);
@@ -313,6 +324,17 @@ export default {
     const handleMessageDetailClose = () => {
       messageDetailVisible.value = false;
       selectedMessage.value = null;
+
+      // 关闭时从 URL 中移除 open_message 参数，但不改变历史栈
+      try {
+        const newQuery = Object.assign({}, route.query);
+        if (newQuery.open_message) {
+          delete newQuery.open_message;
+          router.replace({ query: newQuery });
+        }
+      } catch (e) {
+        // ignore
+      }
     };
 
     // 标记消息为已读
