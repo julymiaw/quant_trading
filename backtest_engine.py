@@ -154,6 +154,8 @@ class TestStrategy(bt.Strategy):
         ("param_columns", []),  # 原始字段名列表
         ("select_func", None),
         ("risk_control_func", None),
+        ("rebalance_interval", 1),  # 调仓间隔（交易日）
+        ("position_count", 1),  # 目标持仓数量
     )
 
     def log(self, txt, dt=None, doprint=False):
@@ -170,6 +172,10 @@ class TestStrategy(bt.Strategy):
         self.param_keys = self.params.param_columns
         self.select_func = self.params.select_func
         self.risk_control_func = self.params.risk_control_func
+        # 重平衡相关
+        self.rebalance_interval = int(self.params.rebalance_interval)
+        self.position_count = int(self.params.position_count)
+        self._last_rebalance_date = None
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -200,74 +206,157 @@ class TestStrategy(bt.Strategy):
         self.order = None
 
     def next(self):
-        if self.order:
-            return
+        # 允许在同一日下多笔委托，不再以单一 self.order 阻塞
 
         date = self.datas[0].datetime.date(0)
         params = {}
         candidates = []
         current_holdings = []
+        suspended = set()
 
-        # 构建 params 字典
+        # 构建 params 字典并检测停牌（四个基本字段为空视为停牌），
+        # 其它指标若出现空值也视为停牌并发出警告
         for d in self.datas:
             stock = d._name
             param_values = {}
 
+            # 先读取所有声明的参数字段
             for key in self.param_keys:
                 mapped_field = self.param_map.get(key, key)
-                param_values[key] = getattr(d, mapped_field, [None])[0]
+                try:
+                    val = getattr(d, mapped_field, [None])[0]
+                except Exception:
+                    val = None
+                param_values[key] = val
 
-            # 默认加入收盘价
-            param_values["system.close"] = self.dataclose[stock][0]
+            # 始终确保有四个基本字段
+            open_v = getattr(d, "open", [None])[0]
+            close_v = getattr(d, "close", [None])[0]
+            high_v = getattr(d, "high", [None])[0]
+            low_v = getattr(d, "low", [None])[0]
+            param_values["system.open"] = open_v
+            param_values["system.close"] = close_v
+            param_values["system.high"] = high_v
+            param_values["system.low"] = low_v
+
+            # 检查停牌：四个基本字段任一为空或 NaN
+            if (
+                open_v is None
+                or close_v is None
+                or high_v is None
+                or low_v is None
+                or pd.isna(open_v)
+                or pd.isna(close_v)
+                or pd.isna(high_v)
+                or pd.isna(low_v)
+            ):
+                suspended.add(stock)
+            else:
+                # 检查其它自定义指标是否为 NaN/None，若出现则警告并视为停牌
+                for key, val in param_values.items():
+                    if key.startswith("system."):
+                        continue
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        self.log(
+                            f"WARN: Indicator '{key}' missing for {stock} on {date}, treat as suspended",
+                            doprint=True,
+                        )
+                        suspended.add(stock)
+                        break
+
             params[stock] = param_values
 
-            self.log(f'{stock}, Close, {params[stock]["system.close"]:.2f}')
+            self.log(f'{stock}, Close, {params[stock].get("system.close", 0):.2f}')
 
-            candidates.append(stock)
+            # 只有非停牌股票才进入候选列表
+            if stock not in suspended:
+                candidates.append(stock)
+
             if self.getposition(d):
                 current_holdings.append(stock)
 
-        # 风险控制：决定是否卖出
-        safe_holdings = self.risk_control_func(current_holdings, params, date)
-        for stock in current_holdings:
-            if stock not in safe_holdings:
-                d = next(data for data in self.datas if data._name == stock)
+        # 每日风控：尝试卖出被风控标记的持仓（若停牌则无法卖出）
+        try:
+            safe_holdings = self.risk_control_func(current_holdings, params, date)
+        except Exception as e:
+            self.log(f"Risk control function error: {e}", doprint=True)
+            safe_holdings = current_holdings[:]
+
+        to_sell_by_risk = [h for h in current_holdings if h not in safe_holdings]
+        for stock in to_sell_by_risk:
+            if stock in suspended:
                 self.log(
-                    f"SELL CREATE (Risk Control) {stock}, {self.dataclose[stock][0]:.2f}",
+                    f"Cannot sell {stock} due to suspension (risk control requested)",
                     doprint=True,
                 )
-                self.order = self.order_target_percent(d, target=0)
+                continue
+            d = next(data for data in self.datas if data._name == stock)
+            self.log(
+                f"SELL CREATE (Risk Control) {stock}, {self.dataclose[stock][0]:.2f}",
+                doprint=True,
+            )
+            # 卖出到 0 持仓
+            self.order_target_percent(d, target=0.0)
 
-        # 选股逻辑：决定是否买入
-        position_count = 1
-        selected_stocks = self.select_func(
-            candidates, params, position_count, current_holdings, date
-        )
+        # 是否需要执行选股（按重平衡间隔）
+        do_rebalance = False
+        if self._last_rebalance_date is None:
+            do_rebalance = True
+        else:
+            days = (date - self._last_rebalance_date).days
+            if days >= max(1, self.rebalance_interval):
+                do_rebalance = True
 
-        for stock in current_holdings:
-            if stock not in selected_stocks:
+        if do_rebalance:
+            # 从候选中移除被风控标记的股票
+            filtered_candidates = [c for c in candidates if c not in to_sell_by_risk]
+
+            try:
+                selected_stocks = self.select_func(
+                    filtered_candidates,
+                    params,
+                    self.position_count,
+                    current_holdings,
+                    date,
+                )
+            except Exception as e:
+                self.log(f"Select function error: {e}", doprint=True)
+                selected_stocks = []
+
+            # 记录本次重平衡时间
+            self._last_rebalance_date = date
+
+            # 卖出：原先持有但不在新持仓且非停牌且非已被风控卖出的股票
+            sells_by_rebalance = [
+                h
+                for h in current_holdings
+                if h not in selected_stocks
+                and h not in to_sell_by_risk
+                and h not in suspended
+            ]
+            for stock in sells_by_rebalance:
                 d = next(data for data in self.datas if data._name == stock)
                 self.log(
-                    f"SELL CREATE {d._name}, {self.dataclose[d._name][0]:.2f}",
+                    f"SELL CREATE (Rebalance) {d._name}, {self.dataclose[d._name][0]:.2f}",
                     doprint=True,
                 )
-                self.order = self.order_target_percent(d, target=0.0)
+                self.order_target_percent(d, target=0.0)
 
-        buy_candidates = [
-            stock for stock in selected_stocks if stock not in current_holdings
-        ]
-        if buy_candidates:
-            # 计算每只股票的分配资金
-            cash_per_stock = self.broker.get_cash() / len(buy_candidates)
-            for stock in buy_candidates:
-                # 计算买入的股数
-                d = next(data for data in self.datas if data._name == stock)
-                size = cash_per_stock / self.dataclose[d._name][0]
-                self.log(
-                    f"BUY CREATE {d._name}, {self.dataclose[d._name][0]:.2f}",
-                    doprint=True,
-                )
-                self.order = self.order_target_percent(d, target=0.99)  # 留一些现金
+            # 购买/调整持仓：对所有被选中的（且非停牌）股票按等权目标仓位下单，使用 order_target_percent 避免按股数造成的资金限制问题
+            alloc_stocks = [s for s in selected_stocks if s not in suspended]
+            if alloc_stocks:
+                per_target = 0.99 / len(alloc_stocks)
+                for stock in alloc_stocks:
+                    try:
+                        d = next(data for data in self.datas if data._name == stock)
+                        self.log(
+                            f"SET TARGET {d._name} -> {per_target:.3f}", doprint=True
+                        )
+                        self.order_target_percent(d, target=per_target)
+                    except StopIteration:
+                        self.log(f"Data for {stock} not found, skip", doprint=True)
+                    except Exception as e:
+                        self.log(f"Failed to set target for {stock}: {e}", doprint=True)
 
     def stop(self):
         self.pnl = round(self.broker.getvalue() - self.val_start, 2)
@@ -1008,10 +1097,10 @@ if __name__ == "__main__":
     # 示例1: 从文件运行回测
     try:
         csv_path = os.path.join(
-            "data_prepared", "system_双均线策略", "prepared_data_params.csv"
+            "data_prepared", "system_小市值策略", "prepared_data_params.csv"
         )
         json_path = os.path.join(
-            "data_prepared", "system_双均线策略", "prepared_data.json"
+            "data_prepared", "system_小市值策略", "prepared_data.json"
         )
 
         results, engine = run_backtest_from_files(
