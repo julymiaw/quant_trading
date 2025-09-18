@@ -9,13 +9,10 @@
 4. 为后续集成到后端API做准备
 """
 
-import datetime
 import os.path
-import sys
 import json
-import io
-import base64
 from typing import Dict, List, Optional, Tuple, Any
+import time
 
 import backtrader as bt
 import pandas as pd
@@ -124,18 +121,37 @@ def create_dynamic_data_class(line_names):
     return DynamicPandasData
 
 
+class CustomCommission(bt.CommInfoBase):
+    params = (
+        ("buy_comm", 0.001),  # 买入佣金比例
+        ("sell_comm", 0.002),  # 卖出佣金比例
+    )
+
+    def _getcommission(self, size, price, pseudoexec):
+        """
+        根据交易方向计算不同的佣金
+        """
+        if size > 0:  # 买入
+            return abs(size) * price * self.p.buy_comm
+        elif size < 0:  # 卖出
+            return abs(size) * price * self.p.sell_comm
+        else:
+            return 0
+
+
 class TestStrategy(bt.Strategy):
     """
-    核心策略类 - 保持与现有逻辑完全兼容
-    不对原有逻辑进行任何修改
+    核心策略类 - 整合 bd51078 提交的改进
+    新增调仓间隔和持仓数量控制功能
     """
 
     params = (
         ("printlog", False),
-        ("param_columns_map", {}),  # 映射字段名
         ("param_columns", []),  # 原始字段名列表
         ("select_func", None),
         ("risk_control_func", None),
+        ("position_count", 1),  # 持仓股票数量
+        ("rebalance_interval", 1),  # 调仓间隔（天数）
     )
 
     def log(self, txt, dt=None, doprint=False):
@@ -148,10 +164,11 @@ class TestStrategy(bt.Strategy):
         self.order = None
         self.val_start = self.broker.getvalue()
         self.comm_info = {}
-        self.param_map = self.params.param_columns_map
         self.param_keys = self.params.param_columns
         self.select_func = self.params.select_func
         self.risk_control_func = self.params.risk_control_func
+        self.position_count = self.params.position_count
+        self.last_rebalance_date = None
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -186,70 +203,176 @@ class TestStrategy(bt.Strategy):
             return
 
         date = self.datas[0].datetime.date(0)
+
+        # 判断是否需要调仓（新增功能）
+        if self.last_rebalance_date is not None:
+            delta_days = (date - self.last_rebalance_date).days
+            if delta_days < self.params.rebalance_interval:
+                return  # 跳过本次调仓
+
+        self.last_rebalance_date = date  # 更新调仓日期
+
         params = {}
         candidates = []
         current_holdings = []
 
-        # 构建 params 字典
+        # 构建 params 字典 - 动态排除停牌股票
+        suspended_stocks = []  # 记录停牌股票
+
         for d in self.datas:
             stock = d._name
             param_values = {}
 
+            # 检查当前数据是否有效（停牌检测）
+            try:
+                current_close = self.dataclose[stock][0]
+                current_open = d.open[0] if hasattr(d, "open") else None
+                current_high = d.high[0] if hasattr(d, "high") else None
+                current_low = d.low[0] if hasattr(d, "low") else None
+
+                # 检查是否停牌：价格为nan、0或异常值
+                is_suspended = (
+                    pd.isna(current_close)
+                    or current_close <= 0
+                    or pd.isna(current_open)
+                    or current_open <= 0
+                    or pd.isna(current_high)
+                    or current_high <= 0
+                    or pd.isna(current_low)
+                    or current_low <= 0
+                    or
+                    # 检查是否涨跌停（开盘=收盘=最高=最低，可能是停牌）
+                    (
+                        current_open == current_close == current_high == current_low
+                        and current_close > 0
+                    )
+                )
+
+                if is_suspended:
+                    suspended_stocks.append(stock)
+                    # 如果该股票有持仓，记录到current_holdings以便后续处理
+                    if self.getposition(d):
+                        current_holdings.append(stock)
+                    continue
+
+            except (IndexError, AttributeError) as e:
+                # 数据访问异常，视为停牌
+                suspended_stocks.append(stock)
+                self.log(f"数据访问异常，视为停牌: {stock}, 错误: {str(e)}")
+                if self.getposition(d):
+                    current_holdings.append(stock)
+                continue
+
             for key in self.param_keys:
-                field_name = self.param_map.get(key, key).split(".")[-1]
-                param_values[key] = getattr(d, field_name, [None])[0]
+                field_name = key.split(".")[-1]
+                try:
+                    value = getattr(d, field_name, [None])[0]
+                    # 对于缺失的参数值，尝试使用前一日的值
+                    if pd.isna(value):
+                        try:
+                            # 尝试获取前一日数据
+                            prev_value = (
+                                getattr(d, field_name, [None])[1]
+                                if len(getattr(d, field_name)) > 1
+                                else None
+                            )
+                            if prev_value is not None and not pd.isna(prev_value):
+                                value = prev_value
+                            else:
+                                # 使用当前收盘价作为备用值
+                                value = current_close
+                        except:
+                            value = current_close
+                    param_values[key] = value
+                except:
+                    # 参数获取失败，使用收盘价替代
+                    param_values[key] = current_close
 
             # 默认加入收盘价
-            param_values["system.close"] = self.dataclose[stock][0]
+            param_values["system.close"] = current_close
             params[stock] = param_values
-
-            self.log(f'{stock}, Close, {params[stock]["system.close"]:.2f}')
 
             candidates.append(stock)
             if self.getposition(d):
                 current_holdings.append(stock)
 
+        # 如果有停牌股票，记录信息
+        if suspended_stocks:
+            self.log(
+                f"今日停牌股票数量: {len(suspended_stocks)}, 可交易股票数量: {len(candidates)}"
+            )
+
         # 风险控制：决定是否卖出
-        safe_holdings = self.risk_control_func(current_holdings, params, date)
+        # 对于有参数的股票才进行风险控制，停牌股票的持仓保持不变
+        tradable_holdings = [stock for stock in current_holdings if stock in params]
+        safe_holdings = (
+            self.risk_control_func(tradable_holdings, params, date)
+            if tradable_holdings
+            else []
+        )
+
+        # 停牌股票暂时视为安全持仓（因为无法交易）
+        suspended_holdings = [
+            stock for stock in current_holdings if stock in suspended_stocks
+        ]
+        safe_holdings.extend(suspended_holdings)
+
         for stock in current_holdings:
             if stock not in safe_holdings:
                 d = next(data for data in self.datas if data._name == stock)
+
+                price = self.dataclose[stock][0]
+                # 即使价格异常，也要强制卖出持仓以控制风险
+                price_str = f"{price:.2f}" if not pd.isna(price) else "NaN"
                 self.log(
-                    f"SELL CREATE (Risk Control) {stock}, {self.dataclose[stock][0]:.2f}",
+                    f"SELL CREATE (Risk Control) {stock}, {price_str}",
                     doprint=True,
                 )
                 self.order = self.order_target_percent(d, target=0)
 
-        # 选股逻辑：决定是否买入
-        position_count = 1
+        # 选股逻辑：决定是否买入（使用参数化的持仓数量）
         selected_stocks = self.select_func(
-            candidates, params, position_count, current_holdings, date
+            candidates, params, self.position_count, current_holdings, date
         )
 
+        # 修复的卖出逻辑：只卖出不在选股结果中但在安全持仓中的股票
         for stock in current_holdings:
-            if stock not in selected_stocks:
+            if stock not in selected_stocks and stock in safe_holdings:
                 d = next(data for data in self.datas if data._name == stock)
+                price = self.dataclose[d._name][0]
+                price_str = f"{price:.2f}" if not pd.isna(price) else "NaN"
                 self.log(
-                    f"SELL CREATE {d._name}, {self.dataclose[d._name][0]:.2f}",
+                    f"SELL CREATE {d._name}, {price_str}",
                     doprint=True,
                 )
                 self.order = self.order_target_percent(d, target=0.0)
 
+        # 筛选买入候选股票：排除停牌股票
         buy_candidates = [
-            stock for stock in selected_stocks if stock not in current_holdings
+            stock
+            for stock in selected_stocks
+            if stock not in current_holdings and stock not in suspended_stocks
         ]
         if buy_candidates:
-            # 计算每只股票的分配资金
-            cash_per_stock = self.broker.get_cash() / len(buy_candidates)
+            # 改进的资金分配算法：留出10%现金缓冲
+            total_value = self.broker.getvalue()
+            available_cash = max(0, total_value * 0.9)  # 使用总价值的90%，留10%现金
+            target_value_per_stock = available_cash / len(buy_candidates)
+
             for stock in buy_candidates:
-                # 计算买入的股数
+                # 双重检查：确保股票不在停牌列表中
+                if stock in suspended_stocks:
+                    self.log(f"股票 {stock} 停牌中，跳过买入", doprint=True)
+                    continue
+
                 d = next(data for data in self.datas if data._name == stock)
-                size = cash_per_stock / self.dataclose[d._name][0]
+                price = self.dataclose[d._name][0]
+                target_percent = target_value_per_stock / total_value
                 self.log(
-                    f"BUY CREATE {d._name}, {self.dataclose[d._name][0]:.2f}",
+                    f"BUY CREATE {d._name}, Price: {price:.2f}, Target %: {target_percent:.4f}",
                     doprint=True,
                 )
-                self.order = self.order_target_percent(d, target=0.99)  # 留一些现金
+                self.order = self.order_target_percent(d, target=target_percent)
 
     def stop(self):
         self.pnl = round(self.broker.getvalue() - self.val_start, 2)
@@ -314,11 +437,6 @@ class BacktestEngine:
         risk_control_func = local_funcs.get("risk_control_func")
 
         param_columns = json_data["param_columns"]
-        param_columns_map = {col: col for col in param_columns}  # 默认映射
-
-        # 允许在 json 中自定义列名映射
-        if "column_mapping" in json_data:
-            param_columns_map.update(json_data["column_mapping"])
 
         # 读取CSV数据 - 不设置索引列，保持所有列
         df = pd.read_csv(data_path)
@@ -328,7 +446,6 @@ class BacktestEngine:
             "select_func": select_func,
             "risk_control_func": risk_control_func,
             "param_columns": param_columns,
-            "param_columns_map": param_columns_map,
             "strategy_info": json_data.get("strategy_info", {}),
             "stock_list": json_data.get("stock_list", []),
             "backtest_start_date": json_data.get("backtest_start_date"),
@@ -359,11 +476,6 @@ class BacktestEngine:
         risk_control_func = local_funcs.get("risk_control_func")
 
         param_columns = data_dict["param_columns"]
-        param_columns_map = {col: col for col in param_columns}  # 默认映射
-
-        # 允许自定义列名映射
-        if "column_mapping" in data_dict:
-            param_columns_map.update(data_dict["column_mapping"])
 
         # 从字典中获取DataFrame（假设数据准备模块会提供这个）
         df = data_dict.get("dataframe")
@@ -377,7 +489,6 @@ class BacktestEngine:
             "select_func": select_func,
             "risk_control_func": risk_control_func,
             "param_columns": param_columns,
-            "param_columns_map": param_columns_map,
             "strategy_info": data_dict.get("strategy_info", {}),
             "stock_list": data_dict.get("stock_list", []),
             "backtest_start_date": data_dict.get("backtest_start_date"),
@@ -397,57 +508,45 @@ class BacktestEngine:
         Returns:
             回测结果字典
         """
+        start_all = time.perf_counter()
         self.cerebro = bt.Cerebro()
+        if print_log:
+            print("[timing] run_backtest started")
 
         df = config["df"]
         select_func = config["select_func"]
         risk_control_func = config["risk_control_func"]
         param_columns = config["param_columns"]
-        param_columns_map = config["param_columns_map"]
 
         # 按股票分组处理数据
+        t0_group = time.perf_counter()
         grouped = df.groupby(df["ts_code"])
 
+        group_count = df["ts_code"].nunique()
+        if print_log:
+            print(
+                f"[timing] grouping done, unique stocks: {group_count}, grouping took {time.perf_counter()-t0_group:.4f}s"
+            )
+
+        stock_add_start = time.perf_counter()
+        stock_counter = 0
+
         for name, group in grouped:
-            available_columns = group.columns.tolist()
-            required_columns = [
-                "system.open",
-                "system.close",
-                "system.high",
-                "system.low",
-            ] + param_columns
-            missing_columns = [
-                col
-                for col in required_columns
-                if param_columns_map.get(col, col) not in available_columns
-            ]
-
-            if missing_columns:
-                raise ValueError(f"数据缺少以下列: {missing_columns}")
-
             # 使用trade_date列作为datetime，并转换为pandas datetime格式
             trade_dates = pd.to_datetime(group["trade_date"])
 
             data = pd.DataFrame(
                 {
                     "datetime": trade_dates,
-                    "open": group[
-                        param_columns_map.get("system.open", "system.open")
-                    ].values,
-                    "close": group[
-                        param_columns_map.get("system.close", "system.close")
-                    ].values,
-                    "high": group[
-                        param_columns_map.get("system.high", "system.high")
-                    ].values,
-                    "low": group[
-                        param_columns_map.get("system.low", "system.low")
-                    ].values,
+                    "open": group["system.open"].values,
+                    "close": group["system.close"].values,
+                    "high": group["system.high"].values,
+                    "low": group["system.low"].values,
                 }
             )
 
             for col in param_columns:
-                data[col.split(".")[-1]] = group[param_columns_map.get(col, col)].values
+                data[col.split(".")[-1]] = group[col].values
 
             # 动态创建数据类
             lines = [col.split(".")[-1] for col in param_columns]
@@ -471,22 +570,37 @@ class BacktestEngine:
 
             data_feed = DynamicDataClass(**feed_kwargs)
             self.cerebro.adddata(data_feed)
+            stock_counter += 1
+
+        if print_log:
+            print(
+                f"[timing] adding {stock_counter} stocks finished, total add time: {time.perf_counter()-stock_add_start:.4f}s"
+            )
+
+        # 从策略信息中提取新参数
+        strategy_info = config.get("strategy_info", {})
+        position_count = strategy_info.get("position_count", 1)
+        rebalance_interval = strategy_info.get("rebalance_interval", 1)
 
         # 添加策略
         self.cerebro.addstrategy(
             TestStrategy,
             printlog=print_log,
-            param_columns_map=param_columns_map,
             param_columns=param_columns,
             select_func=select_func,
             risk_control_func=risk_control_func,
+            position_count=position_count,
+            rebalance_interval=rebalance_interval,
         )
 
-        # 设置初始资金和手续费
+        # 设置初始资金
         self.cerebro.broker.setcash(self.initial_fund)
-        # 设置买入和卖出手续费 - backtrader默认使用平均手续费，我们取两者的平均值
-        avg_commission = (self.buy_fee_rate + self.sell_fee_rate) / 2
-        self.cerebro.broker.setcommission(commission=avg_commission)
+
+        # 使用自定义佣金类，支持分别设置买入和卖出手续费
+        commission_scheme = CustomCommission(
+            buy_comm=self.buy_fee_rate, sell_comm=self.sell_fee_rate
+        )
+        self.cerebro.broker.addcommissioninfo(commission_scheme)
 
         # 添加分析器
         self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="returns")
@@ -495,17 +609,38 @@ class BacktestEngine:
         self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trade_analyzer")
         self.cerebro.addanalyzer(PortfolioValue, _name="portfolio_value")
 
-        print(f"Starting Portfolio Value: {self.cerebro.broker.getvalue():.2f}")
+        if print_log:
+            print(f"Starting Portfolio Value: {self.cerebro.broker.getvalue():.2f}")
 
         # 运行回测
+        t_run_start = time.perf_counter()
+        if print_log:
+            print(f"[timing] starting cerebro.run() ...")
         self.results = self.cerebro.run()
+        t_run_end = time.perf_counter()
         strategy = self.results[0]
+        if print_log:
+            print(
+                f"[timing] cerebro.run() finished, elapsed: {t_run_end-t_run_start:.4f}s"
+            )
 
         final_value = self.cerebro.broker.getvalue()
-        print(f"Final Portfolio Value: {final_value:.2f}")
+        if print_log:
+            print(f"Final Portfolio Value: {final_value:.2f}")
 
-        # 收集分析结果
+        # 分析提取计时
+        t_analyze_start = time.perf_counter()
         analysis_results = self._extract_analysis_results(strategy)
+        t_analyze_end = time.perf_counter()
+        if print_log:
+            print(
+                f"[timing] analysis extraction took {t_analyze_end-t_analyze_start:.4f}s"
+            )
+
+        if print_log:
+            print(
+                f"[timing] total run_backtest elapsed: {time.perf_counter()-start_all:.4f}s"
+            )
 
         return {
             "initial_value": self.initial_fund,
@@ -973,13 +1108,12 @@ def run_backtest_from_data(
 
 # 示例使用
 if __name__ == "__main__":
-    # 示例1: 从文件运行回测
     try:
         csv_path = os.path.join(
-            "data_prepared", "system_双均线策略", "prepared_data_params.csv"
+            "data_prepared", "system_MACD策略", "prepared_data_params.csv"
         )
         json_path = os.path.join(
-            "data_prepared", "system_双均线策略", "prepared_data.json"
+            "data_prepared", "system_MACD策略", "prepared_data.json"
         )
 
         results, engine = run_backtest_from_files(
@@ -1001,7 +1135,7 @@ if __name__ == "__main__":
 
         # 生成交互式图表
         if PLOTLY_AVAILABLE:
-            html_plot = engine.generate_plotly_html("双均线策略回测结果")
+            html_plot = engine.generate_plotly_html("小市值策略回测结果")
             print(f"Plotly HTML图表已生成 (长度: {len(html_plot)})")
 
             # 保存HTML文件用于测试
