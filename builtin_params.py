@@ -15,7 +15,7 @@ def historical_volatility_param(prices, window=30):
 
     :param prices: 价格序列（Pandas Series或numpy array）
     :param window: 计算波动率的滚动窗口大小（默认30天）
-    :return: 年化历史波动率数组，与输入prices长度相同
+    :return: 年化历史波动率数组（百分比），与输入prices长度相同
     """
     # 确保输入是NumPy数组
     prices_arr = np.asarray(prices)
@@ -33,9 +33,9 @@ def historical_volatility_param(prices, window=30):
         window_returns = returns[i - current_window : i]
 
         # 计算窗口内收益率的标准差（日波动率）
-        daily_vol = np.std(window_returns) if len(window_returns) > 0 else 0
+        daily_vol = np.std(window_returns, ddof=1) if len(window_returns) > 1 else 0
 
-        # 年化波动率并转换为百分比，与原实现保持一致
+        # 年化波动率并转换为百分比（与原始实现一致）
         annual_vol = daily_vol * np.sqrt(252) * 100
 
         # 将结果存储在对应位置
@@ -51,7 +51,7 @@ def parkinson_volatility_param(highs, lows, window=30):
     :param highs: 最高价序列
     :param lows: 最低价序列
     :param window: 计算窗口大小
-    :return: Parkinson波动率序列
+    :return: Parkinson波动率序列（百分比）
     """
     if len(highs) != len(lows):
         raise ValueError("Highs and lows must have the same length.")
@@ -72,8 +72,8 @@ def parkinson_volatility_param(highs, lows, window=30):
         # 使用Parkinson公式计算方差
         variance = (1 / (4 * np.log(2))) * np.mean(window_log_range**2)
 
-        # 年化波动率
-        annualized_volatility = np.sqrt(variance) * np.sqrt(252)
+        # 年化波动率并转换为百分比
+        annualized_volatility = np.sqrt(variance) * np.sqrt(252) * 100
 
         volatility_series[i - 1] = annualized_volatility
 
@@ -89,7 +89,7 @@ def garman_klass_volatility_param(opens, highs, lows, closes, window=30):
     :param lows: 最低价序列
     :param closes: 收盘价序列
     :param window: 计算窗口大小
-    :return: Garman-Klass波动率序列
+    :return: Garman-Klass波动率序列（百分比）
     """
     if not (len(opens) == len(highs) == len(lows) == len(closes)):
         raise ValueError("All price lists must have the same length.")
@@ -116,8 +116,8 @@ def garman_klass_volatility_param(opens, highs, lows, closes, window=30):
             window_log_co**2
         )
 
-        # 年化波动率
-        annualized_volatility = np.sqrt(variance) * np.sqrt(252)
+        # 年化波动率并转换为百分比
+        annualized_volatility = np.sqrt(variance) * np.sqrt(252) * 100
 
         volatility_series[i - 1] = annualized_volatility
 
@@ -163,7 +163,7 @@ PREDICT_INDICATORS = {
 def calculation_method(params):
     '''预测未来1天的波动率'''
     import numpy as np
-    from code.predict import predict
+    from predict import predict
     
     # 获取历史波动率数据（过去30天）
     hist_vol = params.get('system.historical_volatility', np.nan)

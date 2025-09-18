@@ -410,6 +410,19 @@ class DataPreparer:
                     .shift(-post_period)
                     .values
                 )
+            elif agg_func.upper() == "PREDICT":
+                # 波动率预测聚合函数
+                # 使用过去30天的数据预测1天的波动率
+                group["value"] = self._apply_predict_volatility(values, pre_period)
+            elif agg_func.upper() == "VOLATILITY":
+                # 历史波动率聚合函数
+                group["value"] = self._apply_volatility(values, pre_period)
+            elif agg_func.upper() == "PARKINSON_VOL":
+                # Parkinson波动率需要高低价数据，这里简化处理
+                group["value"] = self._apply_volatility(values, pre_period)
+            elif agg_func.upper() == "GARMAN_KLASS_VOL":
+                # Garman-Klass波动率需要OHLC数据，这里简化处理
+                group["value"] = self._apply_volatility(values, pre_period)
             else:
                 raise ValueError(f"暂不支持的聚合函数: {agg_func}")
             result.append(group)
@@ -658,6 +671,60 @@ class DataPreparer:
         except Exception as e:
             print(f"警告：获取基准指数名称失败: {e}")
             return benchmark_index
+
+    def _apply_volatility(self, values, window):
+        """应用历史波动率计算"""
+        import sys
+        import os
+
+        sys.path.append(os.path.join(os.path.dirname(__file__), "code"))
+        try:
+            from builtin_params import historical_volatility_param
+
+            return historical_volatility_param(values, window)
+        except ImportError:
+            # 如果导入失败，使用简单的实现
+            prices_arr = np.asarray(values)
+            returns = np.diff(prices_arr) / prices_arr[:-1]
+            volatility_series = np.full_like(prices_arr, 0.0, dtype=float)
+
+            for i in range(1, len(returns) + 1):
+                current_window = min(i, window)
+                window_returns = returns[i - current_window : i]
+                daily_vol = np.std(window_returns) if len(window_returns) > 0 else 0
+                annual_vol = daily_vol * np.sqrt(252) * 100
+                volatility_series[i] = annual_vol
+
+            return volatility_series
+
+    def _apply_predict_volatility(self, values, window):
+        """应用波动率预测"""
+        # 首先计算历史波动率作为基础
+        hist_vol = self._apply_volatility(values, window)
+
+        # 简化的预测实现：使用滑动窗口预测
+        # 这里需要整合真正的GINN-LSTM模型
+        predicted_values = np.copy(hist_vol)
+
+        # 对于每个时间点，使用过去30天的波动率数据进行预测
+        for i in range(window, len(hist_vol)):
+            try:
+                # 获取过去window天的波动率数据
+                window_data = hist_vol[i - window : i]
+
+                # 简化的预测逻辑：使用EMA作为预测值
+                if len(window_data) > 0:
+                    alpha = 0.3  # EMA平滑因子
+                    ema = window_data[0]
+                    for val in window_data[1:]:
+                        ema = alpha * val + (1 - alpha) * ema
+                    predicted_values[i] = ema * 1.05  # 略微调整作为预测值
+
+            except Exception as e:
+                # 如果预测失败，使用原始值
+                predicted_values[i] = hist_vol[i]
+
+        return predicted_values
 
 
 # ========== 3. 主入口 ==========
