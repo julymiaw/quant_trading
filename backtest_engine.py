@@ -526,13 +526,53 @@ class BacktestEngine:
         strategy_param_map.setdefault("system.high", "high")
         strategy_param_map.setdefault("system.low", "low")
 
-        # 按股票分组处理数据（使用 tqdm 显示进度）
-        grouped = df.groupby(df["ts_code"])
-
+        # 数据过滤规则：
+        # - 多支股票（>1 ts_code）：若某只股票在任意一天其 close 为 NaN，则整只股票剔除
+        # - 单支股票（==1 ts_code）：若该股票在某些日期的 close 为 NaN，则剔除这些日期行
         try:
-            total_groups = grouped.ngroups
-        except Exception:
-            total_groups = None
+            # 使用 param_columns_map 找到原始数据中表示收盘价的列名（例如 'system.close'）
+            close_src_col = param_columns_map.get("system.close", "system.close")
+
+            ts_codes = df["ts_code"].unique()
+            excluded = []
+
+            if len(ts_codes) > 1:
+                # 多支股票场景：任何一天 close 为 NaN 的股票都被剔除
+                if close_src_col not in df.columns:
+                    raise KeyError(f"Column not found: {close_src_col}")
+
+                grouped_close_na = df.groupby("ts_code")[close_src_col].apply(
+                    lambda s: s.isna().any()
+                )
+                for ts_code, has_any_na in grouped_close_na.items():
+                    if has_any_na:
+                        # 记录被剔除的股票以及该股票缺失 close 的天数
+                        na_count = int(
+                            df.loc[df["ts_code"] == ts_code, close_src_col].isna().sum()
+                        )
+                        excluded.append((ts_code, na_count))
+
+                if excluded:
+                    excl_list = [e[0] for e in excluded]
+                    config["excluded_stocks"] = {s: d for s, d in excluded}
+                    df = df[~df["ts_code"].isin(excl_list)].copy()
+
+            else:
+                # 单支股票场景：剔除所有 close 为 NaN 的日期行
+                before_rows = len(df)
+                if close_src_col not in df.columns:
+                    raise KeyError(f"Column not found: {close_src_col}")
+
+                removed_rows = df[close_src_col].isna()
+                if removed_rows.any():
+                    removed_dates = df.loc[removed_rows, "trade_date"].unique().tolist()
+                    df = df[~removed_rows].copy()
+                    config["excluded_dates"] = removed_dates
+
+        except Exception as e:
+            print(f"failed to perform NaN-based filtering: {e}")
+
+        grouped = df.groupby(df["ts_code"])
 
         # 预先创建动态数据类和列名（这些在所有分组中保持不变），避免在循环中重复创建类
         lines = [
@@ -1115,10 +1155,10 @@ if __name__ == "__main__":
     # 示例1: 从文件运行回测
     try:
         csv_path = os.path.join(
-            "data_prepared", "system_小市值策略", "prepared_data_params.csv"
+            "data_prepared", "system_双均线策略", "prepared_data_params.csv"
         )
         json_path = os.path.join(
-            "data_prepared", "system_小市值策略", "prepared_data.json"
+            "data_prepared", "system_双均线策略", "prepared_data.json"
         )
 
         results, engine = run_backtest_from_files(

@@ -668,7 +668,7 @@ def main():
         # strategy = "system.双均线策略"
         # strategy = "system.MACD策略"
         start = "2025-08-01"
-        end = "2025-09-01"
+        end = "2025-08-10"
         config = "config.json"
         output = None
 
