@@ -3634,14 +3634,7 @@ def start_backtest(current_user):
 
                 final_fund = results["final_value"]
                 total_return = results["total_return"]
-                annual_return = (
-                    total_return
-                    * 365
-                    / (
-                        (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days
-                        or 1
-                    )
-                )
+                annual_return = results.get("annual_return")
 
                 analysis = results.get("analysis", {})
                 max_drawdown = analysis.get("max_drawdown", 0)

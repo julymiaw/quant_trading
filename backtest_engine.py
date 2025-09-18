@@ -196,8 +196,8 @@ class TestStrategy(bt.Strategy):
             param_values = {}
 
             for key in self.param_keys:
-                field_name = self.param_map.get(key, key).split(".")[-1]
-                param_values[key] = getattr(d, field_name, [None])[0]
+                mapped_field = self.param_map.get(key, key)
+                param_values[key] = getattr(d, mapped_field, [None])[0]
 
             # 默认加入收盘价
             param_values["system.close"] = self.dataclose[stock][0]
@@ -405,26 +405,26 @@ class BacktestEngine:
         param_columns = config["param_columns"]
         param_columns_map = config["param_columns_map"]
 
+        # 为了保证参数的全局唯一性（creator.param），在 DataFrame/数据行中使用安全列名（将 '.' 替换为 '__'）
+        # 构建原始列名 -> 安全列名 的映射，用于写入 data 并传递给策略
+        param_attr_map: Dict[str, str] = {}
+        for col in param_columns:
+            param_attr_map[col] = col.replace(".", "__")
+
+        # 构建传给策略的映射：原始 param key -> data 中实际列名（安全名）
+        strategy_param_map: Dict[str, str] = {}
+        for orig, safe in param_attr_map.items():
+            strategy_param_map[orig] = safe
+        # 同时确保常规 system 字段映射到 data 中的标准列名
+        strategy_param_map.setdefault("system.open", "open")
+        strategy_param_map.setdefault("system.close", "close")
+        strategy_param_map.setdefault("system.high", "high")
+        strategy_param_map.setdefault("system.low", "low")
+
         # 按股票分组处理数据
         grouped = df.groupby(df["ts_code"])
 
         for name, group in grouped:
-            available_columns = group.columns.tolist()
-            required_columns = [
-                "system.open",
-                "system.close",
-                "system.high",
-                "system.low",
-            ] + param_columns
-            missing_columns = [
-                col
-                for col in required_columns
-                if param_columns_map.get(col, col) not in available_columns
-            ]
-
-            if missing_columns:
-                raise ValueError(f"数据缺少以下列: {missing_columns}")
-
             # 使用trade_date列作为datetime，并转换为pandas datetime格式
             trade_dates = pd.to_datetime(group["trade_date"])
 
@@ -446,11 +446,16 @@ class BacktestEngine:
                 }
             )
 
+            # 将每个参数列写入安全列名（避免只用最后一段导致冲突）
             for col in param_columns:
-                data[col.split(".")[-1]] = group[param_columns_map.get(col, col)].values
+                src_col = param_columns_map.get(col, col)
+                dest_col = param_attr_map.get(col, col.replace(".", "__"))
+                data[dest_col] = group[src_col].values
 
-            # 动态创建数据类
-            lines = [col.split(".")[-1] for col in param_columns]
+            # 动态创建数据类，lines 使用安全列名
+            lines = [
+                param_attr_map.get(col, col.replace(".", "__")) for col in param_columns
+            ]
             DynamicDataClass = create_dynamic_data_class(lines)
 
             feed_kwargs = {
@@ -472,11 +477,10 @@ class BacktestEngine:
             data_feed = DynamicDataClass(**feed_kwargs)
             self.cerebro.adddata(data_feed)
 
-        # 添加策略
         self.cerebro.addstrategy(
             TestStrategy,
             printlog=print_log,
-            param_columns_map=param_columns_map,
+            param_columns_map=strategy_param_map,
             param_columns=param_columns,
             select_func=select_func,
             risk_control_func=risk_control_func,
@@ -507,10 +511,19 @@ class BacktestEngine:
         # 收集分析结果
         analysis_results = self._extract_analysis_results(strategy)
 
+        start_date = config.get("backtest_start_date")
+        end_date = config.get("backtest_end_date")
+
+        sd = pd.to_datetime(start_date)
+        ed = pd.to_datetime(end_date)
+        days = max((ed - sd).days, 1)
+        annual_return = ((final_value / self.initial_fund) - 1) * 365.0 / days
+
         return {
             "initial_value": self.initial_fund,
             "final_value": final_value,
             "total_return": (final_value - self.initial_fund) / self.initial_fund,
+            "annual_return": annual_return,
             "strategy_pnl": strategy.pnl,
             "analysis": analysis_results,
             "strategy_info": config.get("strategy_info", {}),
