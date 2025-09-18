@@ -14,7 +14,6 @@ from tushare_cache_client import TushareCacheClient
 from builtin_params import (
     historical_volatility_param,
     BUILTIN_PARAMS,
-    PREDICT_INDICATORS,
 )
 from predict import predict, predict_single_day
 
@@ -70,9 +69,10 @@ def test_complete_system():
         for key, config in BUILTIN_PARAMS.items():
             print(f"  - {key}: {config['description']}")
 
-        print("\n预测指标:")
-        for key, config in PREDICT_INDICATORS.items():
-            print(f"  - {key}: {config['description']}")
+        print("\n预测参数通过PREDICT聚合函数实现:")
+        print(
+            "  - predict_volatility_1day ~ predict_volatility_5day: 基于GINN-LSTM模型的波动率预测参数"
+        )
 
         print("✓ 参数配置正常")
 
@@ -121,11 +121,9 @@ def test_complete_system():
     print(
         "2. 预测波动率参数: system.predict_volatility_1day ~ system.predict_volatility_5day"
     )
-    print(
-        "3. 预测指标: system.predict_volatility_1day_indicator ~ system.predict_volatility_5day_indicator"
-    )
-    print("4. 聚合函数: VOLATILITY (历史波动率), PREDICT (预测波动率)")
-    print("5. 数据库已包含完整的初始化配置")
+    print("3. 聚合函数: VOLATILITY (历史波动率), PREDICT (预测波动率)")
+    print("4. 数据库已包含完整的初始化配置")
+    print("5. 参数通过递归预测实现：1天->2天->3天->4天->5天")
 
 
 if __name__ == "__main__":
