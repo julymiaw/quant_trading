@@ -81,7 +81,7 @@
         <el-table-column prop="create_time" label="创建时间" width="160" />
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="scope">
-            <!-- 系统指标：只能查看代码和复制 -->
+            <!-- 系统指标：查看参数、查看代码、复制 -->
             <template v-if="scope.row.creator_name === 'system'">
               <el-button
                 size="small"
@@ -102,8 +102,8 @@
                 复制
               </el-button>
             </template>
-            <!-- 个人指标：可以编辑代码和删除 -->
-            <template v-else-if="isCurrentUserCreator(scope.row)">
+            <!-- 个人指标：编辑参数、编辑代码、复制、删除 -->
+            <template v-else>
               <el-button
                 size="small"
                 type="primary"
@@ -118,18 +118,15 @@
               </el-button>
               <el-button
                 size="small"
-                type="danger"
-                @click="deleteIndicator(scope.row)">
-                删除
-              </el-button>
-            </template>
-            <!-- 其他用户指标：只能复制 -->
-            <template v-else>
-              <el-button
-                size="small"
                 type="success"
                 @click="copyIndicator(scope.row)">
                 复制
+              </el-button>
+              <el-button
+                size="small"
+                type="danger"
+                @click="deleteIndicator(scope.row)">
+                删除
               </el-button>
             </template>
           </template>
