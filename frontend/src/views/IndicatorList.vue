@@ -79,28 +79,59 @@
           show-overflow-tooltip
           min-width="200" />
         <el-table-column prop="create_time" label="创建时间" width="160" />
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="scope">
-            <el-button
-              type="primary"
-              size="small"
-              @click="editIndicator(scope.row)"
-              v-if="isCurrentUserCreator(scope.row)">
-              编辑
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="deleteIndicator(scope.row)"
-              v-if="isCurrentUserCreator(scope.row)">
-              删除
-            </el-button>
-            <el-button
-              type="default"
-              size="small"
-              @click="copyIndicator(scope.row)">
-              复制
-            </el-button>
+            <!-- 系统指标：只能查看代码和复制 -->
+            <template v-if="scope.row.creator_name === 'system'">
+              <el-button
+                size="small"
+                type="info"
+                @click="goToIndicatorDetail(scope.row)">
+                查看参数
+              </el-button>
+              <el-button
+                size="small"
+                type="info"
+                @click="viewIndicatorCode(scope.row)">
+                查看代码
+              </el-button>
+              <el-button
+                size="small"
+                type="success"
+                @click="copyIndicator(scope.row)">
+                复制
+              </el-button>
+            </template>
+            <!-- 个人指标：可以编辑代码和删除 -->
+            <template v-else-if="isCurrentUserCreator(scope.row)">
+              <el-button
+                size="small"
+                type="primary"
+                @click="goToIndicatorDetail(scope.row)">
+                编辑参数
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                @click="editIndicator(scope.row)">
+                编辑代码
+              </el-button>
+              <el-button
+                size="small"
+                type="danger"
+                @click="deleteIndicator(scope.row)">
+                删除
+              </el-button>
+            </template>
+            <!-- 其他用户指标：只能复制 -->
+            <template v-else>
+              <el-button
+                size="small"
+                type="success"
+                @click="copyIndicator(scope.row)">
+                复制
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -158,6 +189,49 @@
         <span class="dialog-footer">
           <el-button @click="handleIndicatorDialogClose">取消</el-button>
           <el-button type="primary" @click="saveIndicator">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 查看指标代码弹窗 -->
+    <el-dialog
+      v-model="viewCodeDialogVisible"
+      :title="`${viewingIndicator?.indicator_name || ''} - 查看代码`"
+      width="900px"
+      :before-close="handleViewCodeDialogClose">
+      <div class="view-code-content">
+        <div class="code-info">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="指标名称">
+              {{ viewingIndicator?.indicator_name }}
+            </el-descriptions-item>
+            <el-descriptions-item label="创建者">
+              {{ viewingIndicator?.creator_name }}
+            </el-descriptions-item>
+            <el-descriptions-item label="创建时间" :span="2">
+              {{ viewingIndicator?.create_time }}
+            </el-descriptions-item>
+            <el-descriptions-item label="指标说明" :span="2">
+              {{ viewingIndicator?.description || "无说明" }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+        <div class="code-section">
+          <h3>计算函数代码</h3>
+          <div class="code-editor-wrapper readonly">
+            <CodeEditor
+              :model-value="viewingIndicator?.calculation_method || ''"
+              :readonly="true"
+              :height="'350'" />
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleViewCodeDialogClose">关闭</el-button>
+          <el-button type="success" @click="copyIndicator(viewingIndicator)">
+            复制此指标
+          </el-button>
         </span>
       </template>
     </el-dialog>
@@ -380,6 +454,10 @@ export default {
     const editingIndicator = ref(null);
     const indicatorFormRef = ref(null);
 
+    // 查看代码弹窗状态
+    const viewCodeDialogVisible = ref(false);
+    const viewingIndicator = ref(null);
+
     // 指标参数相关状态
     const indicatorParamsDialogVisible = ref(false);
     const currentIndicator = ref(null);
@@ -588,12 +666,18 @@ export default {
       // 重置表单
       Object.assign(indicatorForm, {
         indicator_name: "",
-        calculation_method: "",
+        calculation_method: defaultIndicatorFunc, // 使用默认模板
         description: "",
         is_active: true,
       });
 
       indicatorDialogVisible.value = true;
+    };
+
+    // 查看指标代码
+    const viewIndicatorCode = (indicator) => {
+      viewingIndicator.value = indicator;
+      viewCodeDialogVisible.value = true;
     };
 
     // 编辑指标
@@ -1095,6 +1179,12 @@ export default {
       }
     };
 
+    // 处理查看代码弹窗关闭
+    const handleViewCodeDialogClose = () => {
+      viewCodeDialogVisible.value = false;
+      viewingIndicator.value = null;
+    };
+
     // 分页处理
     const handleSizeChange = (newSize) => {
       pageSize.value = newSize;
@@ -1154,6 +1244,8 @@ export default {
       indicatorFormRef,
       indicatorForm,
       indicatorRules,
+      viewCodeDialogVisible,
+      viewingIndicator,
       indicatorParamsDialogVisible,
       currentIndicator,
       currentIndicatorParams,
@@ -1166,6 +1258,7 @@ export default {
       refreshIndicators,
       goToIndicatorDetail,
       showAddIndicatorDialog,
+      viewIndicatorCode,
       editIndicator,
       deleteIndicator,
       copyIndicator,
@@ -1179,6 +1272,7 @@ export default {
       addParamMode,
       existingParamSelected,
       handleIndicatorDialogClose,
+      handleViewCodeDialogClose,
       handleIndicatorParamsDialogClose,
       handleSizeChange,
       handleCurrentChange,
@@ -1264,7 +1358,6 @@ export default {
 
 .code-editor-container {
   height: 30vh;
-  width: 60vh;
 }
 
 .code-editor-wrapper {
@@ -1286,5 +1379,35 @@ export default {
 
 .textarea-wide {
   max-width: 560px;
+}
+
+/* 查看代码弹窗样式 */
+.view-code-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.code-info {
+  margin-bottom: 10px;
+}
+
+.code-section h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.code-editor-wrapper.readonly {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #f8f8f8;
+}
+
+/* 操作按钮间距优化 */
+.el-table .cell .el-button + .el-button {
+  margin-left: 4px;
 }
 </style>
