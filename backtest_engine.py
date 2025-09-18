@@ -176,6 +176,8 @@ class TestStrategy(bt.Strategy):
         self.rebalance_interval = int(self.params.rebalance_interval)
         self.position_count = int(self.params.position_count)
         self._last_rebalance_date = None
+        # 记录每笔已结算交易的盈亏，用于计算平均盈利/亏损
+        self.trade_pnls = []
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -204,6 +206,39 @@ class TestStrategy(bt.Strategy):
             )
 
         self.order = None
+
+    def notify_trade(self, trade):
+        """
+        当一笔交易完成（平仓）时，会收到通知，记录该笔的盈亏。
+        trade.pnl 包含该笔交易的盈亏（包含手续费）。
+        """
+        if trade.isclosed:
+            try:
+                pnl = getattr(trade, "pnl", None)
+                # backtrader trade 对象有多个属性，不同版本可能有所差异
+                # 尝试从 trade 中提取已实现盈亏
+                if pnl is None:
+                    pnl = getattr(trade, "pnlcomm", None)
+                if pnl is None:
+                    # 如果仍然为空，尝试从 trade.executed 中计算
+                    executed = getattr(trade, "executed", None)
+                    if executed is not None:
+                        pnl = getattr(executed, "profit", None)
+
+                if pnl is None:
+                    # 无法获取具体 pnl，跳过记录
+                    return
+
+                # 将 pnl 转为数值并记录
+                try:
+                    pnl_value = float(pnl)
+                except Exception:
+                    return
+
+                self.trade_pnls.append(pnl_value)
+            except Exception:
+                # 保护性捕获，避免因记录失败影响回测
+                return
 
     def next(self):
         # 允许在同一日下多笔委托，不再以单一 self.order 阻塞
@@ -723,6 +758,33 @@ class BacktestEngine:
             results["lost_total"] = trade_analysis.get("lost", {}).get("total", 0)
             results["total_trades"] = results["won_total"] + results["lost_total"]
             results["win_rate"] = results["won_total"] / max(results["total_trades"], 1)
+            # 计算每笔盈亏的平均值（如果策略记录了 trade_pnls）
+            pnls = []
+            try:
+                pnls = getattr(strategy, "trade_pnls", []) or []
+            except Exception:
+                pnls = []
+
+            won_pnls = [p for p in pnls if p > 0]
+            lost_pnls = [p for p in pnls if p < 0]
+
+            won_avg = float(sum(won_pnls) / len(won_pnls)) if len(won_pnls) > 0 else 0
+            lost_avg = (
+                float(abs(sum(lost_pnls) / len(lost_pnls))) if len(lost_pnls) > 0 else 0
+            )
+
+            results["won_pnl_avg"] = won_avg
+            results["lost_pnl_avg"] = lost_avg
+
+            # 计算盈亏比，只有在有盈利和亏损的平均值时计算
+            profit_loss_ratio = None
+            if won_avg > 0 and lost_avg > 0:
+                try:
+                    profit_loss_ratio = won_avg / lost_avg
+                except Exception:
+                    profit_loss_ratio = None
+
+            results["profit_loss_ratio"] = profit_loss_ratio
         except:
             results["won_total"] = 0
             results["lost_total"] = 0
