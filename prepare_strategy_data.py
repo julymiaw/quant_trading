@@ -673,10 +673,11 @@ class DataPreparer:
         # 这里需要整合真正的GINN-LSTM模型
         predicted_values = np.copy(hist_vol)
 
-        # 对于每个时间点，使用过去30天的波动率数据进行预测
+        # 正确的预测逻辑：用过去window天的数据预测当前天
+        # 注意：前window天无法预测（没有足够的历史数据），保持原值
         for i in range(window, len(hist_vol)):
             try:
-                # 获取过去window天的波动率数据
+                # 获取过去window天的波动率数据 [i-window:i)
                 window_data = hist_vol[i - window : i]
 
                 # 简化的预测逻辑：使用EMA作为预测值
@@ -685,7 +686,11 @@ class DataPreparer:
                     ema = window_data[0]
                     for val in window_data[1:]:
                         ema = alpha * val + (1 - alpha) * ema
+                    # 用过去30天的EMA预测当前天（第i天）
                     predicted_values[i] = ema * 1.05  # 略微调整作为预测值
+                else:
+                    # 如果窗口数据不足，使用原始值
+                    predicted_values[i] = hist_vol[i]
 
             except Exception as e:
                 # 如果预测失败，使用原始值
