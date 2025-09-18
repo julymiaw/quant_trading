@@ -53,7 +53,7 @@
         row-key="id"
         height="100%"
         :resizable="false">
-        <el-table-column prop="param_name" label="参数名称" width="150" />
+        <el-table-column prop="param_name" label="参数名称" width="200" />
         <el-table-column prop="param_type" label="参数类型" width="120">
           <template #default="scope">
             <el-tag

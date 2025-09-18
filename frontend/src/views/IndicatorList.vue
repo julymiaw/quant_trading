@@ -236,16 +236,64 @@
       </template>
     </el-dialog>
 
-    <!-- 添加/编辑指标参数弹窗 -->
+    <!-- 查看指标参数弹窗（只读模式） -->
     <el-dialog
-      v-model="indicatorParamsDialogVisible"
+      v-model="viewParamsDialogVisible"
+      :title="`${currentIndicator?.indicator_name || ''} - 查看参数`"
+      width="800px"
+      :before-close="handleViewParamsDialogClose">
+      <div class="view-params-content">
+        <div class="params-list">
+          <div v-if="currentIndicatorParams.length === 0" class="empty-params">
+            <el-empty description="暂无参数" />
+          </div>
+          <el-table
+            v-else
+            :data="currentIndicatorParams"
+            style="width: 100%"
+            border>
+            <el-table-column prop="param_name" label="参数名称" width="150" />
+            <el-table-column prop="param_type" label="参数类型" width="95">
+              <template #default="scope">
+                <el-tag
+                  :type="
+                    scope.row.param_type === 'table' ? 'primary' : 'success'
+                  ">
+                  {{ scope.row.param_type === "table" ? "数据表" : "指标" }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="data_id" label="数据来源" width="150" />
+            <el-table-column prop="pre_period" label="历史天数" width="100" />
+            <el-table-column prop="post_period" label="预测天数" width="100" />
+            <el-table-column prop="agg_func" label="聚合函数" width="95" />
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleViewParamsDialogClose">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 管理指标参数弹窗（编辑模式） -->
+    <el-dialog
+      v-model="manageParamsDialogVisible"
       :title="`${currentIndicator?.indicator_name || ''} - 参数管理`"
       width="800px"
-      :before-close="handleIndicatorParamsDialogClose">
+      :before-close="handleManageParamsDialogClose">
       <div class="indicator-params-content">
         <div class="params-list">
           <h3>已添加参数</h3>
-          <el-table :data="currentIndicatorParams" style="width: 100%" border>
+          <div v-if="currentIndicatorParams.length === 0" class="empty-params">
+            <el-empty description="暂无参数，请添加参数" />
+          </div>
+          <el-table
+            v-else
+            :data="currentIndicatorParams"
+            style="width: 100%"
+            border>
             <el-table-column prop="param_name" label="参数名称" width="150" />
             <el-table-column prop="param_type" label="参数类型" width="95">
               <template #default="scope">
@@ -376,7 +424,7 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="handleIndicatorParamsDialogClose">关闭</el-button>
+          <el-button @click="handleManageParamsDialogClose">关闭</el-button>
         </span>
       </template>
     </el-dialog>
@@ -459,7 +507,8 @@ export default {
     const viewingIndicator = ref(null);
 
     // 指标参数相关状态
-    const indicatorParamsDialogVisible = ref(false);
+    const viewParamsDialogVisible = ref(false);
+    const manageParamsDialogVisible = ref(false);
     const currentIndicator = ref(null);
     const currentIndicatorParams = ref([]);
     const addParamFormRef = ref(null);
@@ -927,24 +976,30 @@ export default {
       }
     };
 
-    // 打开指标参数管理弹窗
+    // 打开指标参数弹窗（根据权限决定是查看还是管理）
     const openIndicatorParamsDialog = (indicator) => {
       currentIndicator.value = indicator;
 
       // 获取指标参数
       fetchIndicatorParams(indicator);
 
-      // 重置添加参数表单
-      Object.assign(addParamForm, {
-        param_name: "",
-        data_id: "",
-        param_type: "table",
-        pre_period: 0,
-        post_period: 0,
-        agg_func: null,
-      });
-
-      indicatorParamsDialogVisible.value = true;
+      // 根据用户权限决定打开哪个弹窗
+      if (isCurrentUserCreator(indicator)) {
+        // 用户自己的指标：打开管理弹窗
+        // 重置添加参数表单
+        Object.assign(addParamForm, {
+          param_name: "",
+          data_id: "",
+          param_type: "table",
+          pre_period: 0,
+          post_period: 0,
+          agg_func: null,
+        });
+        manageParamsDialogVisible.value = true;
+      } else {
+        // 系统指标或其他用户指标：打开查看弹窗
+        viewParamsDialogVisible.value = true;
+      }
     };
 
     // 获取指标参数（从后端拉取关系并映射为表格需要的字段）
@@ -1169,9 +1224,14 @@ export default {
       }
     };
 
-    // 处理指标参数弹窗关闭
-    const handleIndicatorParamsDialogClose = () => {
-      indicatorParamsDialogVisible.value = false;
+    // 处理查看参数弹窗关闭
+    const handleViewParamsDialogClose = () => {
+      viewParamsDialogVisible.value = false;
+    };
+
+    // 处理管理参数弹窗关闭
+    const handleManageParamsDialogClose = () => {
+      manageParamsDialogVisible.value = false;
 
       // 重置表单
       if (addParamFormRef.value) {
@@ -1246,7 +1306,8 @@ export default {
       indicatorRules,
       viewCodeDialogVisible,
       viewingIndicator,
-      indicatorParamsDialogVisible,
+      viewParamsDialogVisible,
+      manageParamsDialogVisible,
       currentIndicator,
       currentIndicatorParams,
       addParamFormRef,
@@ -1273,7 +1334,8 @@ export default {
       existingParamSelected,
       handleIndicatorDialogClose,
       handleViewCodeDialogClose,
-      handleIndicatorParamsDialogClose,
+      handleViewParamsDialogClose,
+      handleManageParamsDialogClose,
       handleSizeChange,
       handleCurrentChange,
       isCurrentUserCreator,
@@ -1409,5 +1471,16 @@ export default {
 /* 操作按钮间距优化 */
 .el-table .cell .el-button + .el-button {
   margin-left: 4px;
+}
+
+/* 查看参数弹窗样式 */
+.view-params-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.view-params-content .params-list {
+  margin-bottom: 0;
 }
 </style>
