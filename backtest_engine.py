@@ -266,8 +266,6 @@ class TestStrategy(bt.Strategy):
 
             params[stock] = param_values
 
-            self.log(f'{stock}, Close, {params[stock].get("system.close", 0):.2f}')
-
             # 只有非停牌股票才进入候选列表
             if stock not in suspended:
                 candidates.append(stock)
@@ -528,14 +526,26 @@ class BacktestEngine:
         strategy_param_map.setdefault("system.high", "high")
         strategy_param_map.setdefault("system.low", "low")
 
-        # 按股票分组处理数据
+        # 按股票分组处理数据（使用 tqdm 显示进度）
         grouped = df.groupby(df["ts_code"])
+
+        try:
+            total_groups = grouped.ngroups
+        except Exception:
+            total_groups = None
+
+        # 预先创建动态数据类和列名（这些在所有分组中保持不变），避免在循环中重复创建类
+        lines = [
+            param_attr_map.get(col, col.replace(".", "__")) for col in param_columns
+        ]
+        DynamicDataClass = create_dynamic_data_class(lines)
 
         for name, group in grouped:
             # 使用trade_date列作为datetime，并转换为pandas datetime格式
-            trade_dates = pd.to_datetime(group["trade_date"])
+            trade_dates = pd.to_datetime(group["trade_date"]).reset_index(drop=True)
 
-            data = pd.DataFrame(
+            # 基本四个字段直接从原始列切片（一次性读取）
+            data_base = pd.DataFrame(
                 {
                     "datetime": trade_dates,
                     "open": group[
@@ -553,18 +563,26 @@ class BacktestEngine:
                 }
             )
 
-            # 将每个参数列写入安全列名（避免只用最后一段导致冲突）
-            for col in param_columns:
-                src_col = param_columns_map.get(col, col)
-                dest_col = param_attr_map.get(col, col.replace(".", "__"))
-                data[dest_col] = group[src_col].values
-
-            # 动态创建数据类，lines 使用安全列名
-            lines = [
+            # 将其它参数列一次性切片并重命名为安全列名，替代逐列赋值
+            src_cols = [param_columns_map.get(col, col) for col in param_columns]
+            dest_cols = [
                 param_attr_map.get(col, col.replace(".", "__")) for col in param_columns
             ]
-            DynamicDataClass = create_dynamic_data_class(lines)
 
+            # 有些 src_cols 可能不存在于 group，先过滤
+            existing_pairs = [
+                (s, d) for s, d in zip(src_cols, dest_cols) if s in group.columns
+            ]
+            if existing_pairs:
+                src_exist, dest_exist = zip(*existing_pairs)
+                temp = group[list(src_exist)].reset_index(drop=True).copy()
+                temp.columns = list(dest_exist)
+                # 合并基础表与参数表
+                data = pd.concat([data_base, temp], axis=1)
+            else:
+                data = data_base
+
+            # 准备 feed kwargs（列索引因 group 而异）
             feed_kwargs = {
                 "dataname": data,
                 "name": name,
