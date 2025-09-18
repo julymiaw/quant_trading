@@ -407,24 +407,6 @@ class TushareCacheClient:
             df = self.pro.daily(
                 ts_code=code_str, start_date=start_date, end_date=end_date
             )
-            if df is None or len(df) != expected:
-                if df is not None:
-                    expected_set = set(
-                        (code, date) for code in batch_codes for date in trade_dates
-                    )
-                    actual_set = set(zip(df["ts_code"], df["trade_date"]))
-                    missing = expected_set - actual_set
-                    from collections import defaultdict
-
-                    miss_dict = defaultdict(list)
-                    for code, date in missing:
-                        miss_dict[code].append(date)
-                    for code in batch_codes:
-                        total = n_dates
-                        missing_count = len(miss_dict[code])
-                        percent = 100 * (total - missing_count) / total if total else 0
-                        if missing_count > 0:
-                            print(f"[daily] {code}: 数据完整率 {percent:.2f}%")
             self._delete_daily(batch_codes, trade_dates, "daily")
             self._insert_daily(df, "daily")
         # 最终返回本地数据
@@ -507,24 +489,6 @@ class TushareCacheClient:
             df = self.pro.daily_basic(
                 ts_code=code_str, start_date=start_date, end_date=end_date
             )
-            if df is None or len(df) != expected:
-                if df is not None:
-                    expected_set = set(
-                        (code, date) for code in batch_codes for date in trade_dates
-                    )
-                    actual_set = set(zip(df["ts_code"], df["trade_date"]))
-                    missing = expected_set - actual_set
-                    from collections import defaultdict
-
-                    miss_dict = defaultdict(list)
-                    for code, date in missing:
-                        miss_dict[code].append(date)
-                    for code in batch_codes:
-                        total = n_dates
-                        missing_count = len(miss_dict[code])
-                        percent = 100 * (total - missing_count) / total if total else 0
-                        if missing_count > 0:
-                            print(f"[daily_basic] {code}: 数据完整率 {percent:.2f}%")
             self._delete_daily(batch_codes, trade_dates, "daily_basic")
             self._insert_daily(df, "daily_basic")
         # 最终返回本地数据

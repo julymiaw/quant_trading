@@ -3,8 +3,12 @@
     <!-- 顶部导航栏 -->
     <header class="navbar">
       <div class="navbar-left">
-        <img src="/logo_seuquant.png" alt="Logo" class="logo" />
-        <h1 class="app-title">量化交易选股系统</h1>
+        <img
+          src="/logo_seuquant.png"
+          alt="Logo"
+          class="logo clickable"
+          @click="goHome" />
+        <h1 class="app-title clickable" @click="goHome">量化交易选股系统</h1>
       </div>
       <div class="navbar-center">
         <el-menu
@@ -173,6 +177,11 @@ export default {
       }
     };
 
+    // 跳转到首页（点击 logo 或标题）
+    const goHome = () => {
+      router.push("/");
+    };
+
     // 显示用户信息
     const showUserInfo = async () => {
       try {
@@ -261,6 +270,7 @@ export default {
       formatDate,
       formatUserStatus,
       goBack,
+      goHome,
       showUserInfo,
       handleUserInfoDialogClose,
       goToMessageBox,
@@ -300,6 +310,16 @@ export default {
   height: 40px;
   margin-right: 15px;
   flex-shrink: 0; /* logo不缩小 */
+}
+
+.clickable {
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.clickable:hover {
+  transform: translateY(-2px);
+  opacity: 0.95;
 }
 
 .app-title {
