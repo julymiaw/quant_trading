@@ -276,6 +276,7 @@
                     <el-option label="MIN" value="MIN" />
                     <el-option label="SUM" value="SUM" />
                     <el-option label="AVG" value="AVG" />
+                    <el-option label="PREDICT" value="predict" />
                   </el-select>
                 </el-form-item>
               </el-col>

@@ -178,6 +178,7 @@
                 <el-option label="MIN" value="MIN" />
                 <el-option label="SUM" value="SUM" />
                 <el-option label="AVG" value="AVG" />
+                <el-option label="PREDICT" value="predict" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -383,16 +384,19 @@ export default {
     const editParam = (param) => {
       isEditMode.value = true;
       editingParam.value = param;
+      console.log(param);
 
-      // 填充表单
-      Object.assign(paramForm, {
-        param_name: param.param_name,
-        data_id: param.data_id,
-        param_type: param.param_type,
-        pre_period: param.pre_period || 0,
-        post_period: param.post_period || 0,
-        agg_func: param.agg_func || null,
-      });
+      // 先设置类型，确保下方赋值时SmartAutocomplete和聚合函数不会被watch清空
+      paramForm.param_type = param.param_type;
+
+      // 下一个tick再赋值data_id和agg_func，确保组件已渲染为正确类型
+      setTimeout(() => {
+        paramForm.param_name = param.param_name;
+        paramForm.data_id = param.data_id;
+        paramForm.pre_period = param.pre_period || 0;
+        paramForm.post_period = param.post_period || 0;
+        paramForm.agg_func = param.agg_func || null;
+      }, 0);
 
       paramDialogVisible.value = true;
     };
