@@ -126,6 +126,13 @@
               删除
             </el-button>
             <el-button
+              type="info"
+              size="small"
+              @click="goToStrategyDetail(scope.row)"
+              v-if="!isCurrentUserCreator(scope.row)">
+              查看
+            </el-button>
+            <el-button
               type="default"
               size="small"
               @click="copyStrategy(scope.row)">

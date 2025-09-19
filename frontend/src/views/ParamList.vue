@@ -92,6 +92,13 @@
               删除
             </el-button>
             <el-button
+              type="info"
+              size="small"
+              @click="viewParamDetail(scope.row)"
+              v-if="!isCurrentUserCreator(scope.row)">
+              查看
+            </el-button>
+            <el-button
               type="default"
               size="small"
               @click="copyParam(scope.row)">
@@ -191,6 +198,58 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 查看参数详情弹窗 -->
+    <el-dialog
+      v-model="viewParamDialogVisible"
+      :title="`${viewingParam?.param_name || ''} - 参数详情`"
+      width="600px"
+      :before-close="handleViewParamDialogClose">
+      <div class="param-detail-content">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="参数ID">
+            {{ viewingParam?.param_name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="参数类型">
+            <el-tag
+              :type="
+                viewingParam?.param_type === 'table' ? 'primary' : 'success'
+              ">
+              {{ viewingParam?.param_type === "table" ? "数据表" : "指标" }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="数据来源">
+            {{ viewingParam?.data_id }}
+          </el-descriptions-item>
+          <el-descriptions-item label="历史天数">
+            {{ viewingParam?.pre_period || 0 }}天
+          </el-descriptions-item>
+          <el-descriptions-item label="预测天数">
+            {{ viewingParam?.post_period || 0 }}天
+          </el-descriptions-item>
+          <el-descriptions-item label="聚合函数">
+            <el-tag v-if="viewingParam?.agg_func" type="info">
+              {{ viewingParam.agg_func }}
+            </el-tag>
+            <span v-else>无</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建者">
+            {{ viewingParam?.creator_name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ viewingParam?.create_time }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleViewParamDialogClose">关闭</el-button>
+          <el-button type="success" @click="copyParam(viewingParam)">
+            复制参数
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -234,6 +293,10 @@ export default {
     const isEditMode = ref(false);
     const editingParam = ref(null);
     const paramFormRef = ref(null);
+
+    // 查看参数详情弹窗状态
+    const viewParamDialogVisible = ref(false);
+    const viewingParam = ref(null);
 
     // 参数表单数据
     const paramForm = reactive({
@@ -399,6 +462,12 @@ export default {
       }, 0);
 
       paramDialogVisible.value = true;
+    };
+
+    // 查看参数详情
+    const viewParamDetail = (param) => {
+      viewingParam.value = param;
+      viewParamDialogVisible.value = true;
     };
 
     // 删除参数
@@ -593,6 +662,12 @@ export default {
       }
     };
 
+    // 处理查看参数详情弹窗关闭
+    const handleViewParamDialogClose = () => {
+      viewParamDialogVisible.value = false;
+      viewingParam.value = null;
+    };
+
     // 分页处理
     const handleSizeChange = (newSize) => {
       pageSize.value = newSize;
@@ -644,16 +719,20 @@ export default {
       paramFormRef,
       paramForm,
       paramRules,
+      viewParamDialogVisible,
+      viewingParam,
       filteredParams,
       fetchParams,
       refreshParams,
       showAddParamDialog,
       editParam,
+      viewParamDetail,
       deleteParam,
       copyParam,
       saveParam,
       handleDataSourceSelect,
       handleParamDialogClose,
+      handleViewParamDialogClose,
       handleSizeChange,
       handleCurrentChange,
       isCurrentUserCreator,
@@ -722,5 +801,12 @@ export default {
 .el-table .cell .el-button {
   white-space: nowrap;
   margin-right: 8px;
+}
+
+/* 查看参数详情弹窗样式 */
+.param-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 </style>
